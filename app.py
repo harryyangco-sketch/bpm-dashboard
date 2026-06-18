@@ -1,20 +1,20 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import pandas as pd
+import json
 from datetime import date
 
-# ── 頁面設定 ──────────────────────────────────────────
 st.set_page_config(page_title="BPM Team Dashboard", layout="wide", page_icon="📋")
 
-# ── Notion 設定 ───────────────────────────────────────
-NOTION_TOKEN = st.secrets["NOTION_TOKEN"]  # 放在 .streamlit/secrets.toml
+# ── 設定 ──────────────────────────────────────────────
+NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
 DBS = {
     "ALPT ALPSG BPM 導入專案": "38146c131ee380938377fc08df63428b",
     "ALPM BPM 優化專案":       "38146c131ee38099ae66cdae04e36c92",
     "BPM 多語系專案":           "38146c131ee3809ebe63db8f72fb615d",
     "Ad-Hoc Project":          "38246c131ee3803299c4f30c7d3960f3",
 }
-STC = {"未開始": "#b9bccd", "進行中": "#6aa6f5", "已完成": "#57c4a3"}
 
 # ── 資料拉取 ──────────────────────────────────────────
 @st.cache_data(ttl=300)
@@ -25,16 +25,15 @@ def fetch_all_tasks():
         "Content-Type": "application/json",
     }
     tasks = []
+    errors = []
     for proj_name, db_id in DBS.items():
         try:
             url = f"https://api.notion.com/v1/databases/{db_id}/query"
             res = requests.post(url, headers=headers, json={})
             res.raise_for_status()
             results = res.json().get("results", [])
-
             for page in results:
                 p = page["properties"]
-
                 def txt(key):
                     v = p.get(key, {})
                     t = v.get("type")
@@ -53,132 +52,433 @@ def fetch_all_tasks():
                 progress  = 100 if status == "已完成" else (0 if status == "未開始" else round(start_val / end_val * 100) if end_val else 0)
 
                 tasks.append({
-                    "專案":   proj_name,
-                    "任務":   task_name,
-                    "負責人": txt("負責人"),
-                    "優先":   txt("優先順序"),
-                    "狀態":   status,
-                    "開始":   txt("開始日期"),
-                    "結束":   txt("結束日期"),
-                    "進度":   progress,
-                    "決議":   txt("須優先決議"),
-                    "說明":   txt("決議事項說明"),
+                    "proj":    proj_name,
+                    "task":    task_name,
+                    "owner":   txt("負責人"),
+                    "prio":    txt("優先順序"),
+                    "status":  status,
+                    "start":   txt("開始日期"),
+                    "end":     txt("結束日期"),
+                    "progress": progress,
+                    "decide":  txt("須優先決議"),
+                    "note":    txt("決議事項說明"),
                 })
         except Exception as e:
-            st.warning(f"⚠️ {proj_name} 讀取失敗：{e}")
-    return pd.DataFrame(tasks)
+            errors.append(f"{proj_name}: {e}")
+    return tasks, errors
 
-# ── 工具函式 ──────────────────────────────────────────
-def days_late(end_str, status):
-    try:
-        if not end_str or status == "已完成":
-            return 0
-        delta = (date.today() - date.fromisoformat(str(end_str)[:10])).days
-        return delta if delta > 0 else 0
-    except Exception:
-        return 0
-
-def prio_color(p):
-    return {"高": "🔴", "中": "🟡", "低": "🟢"}.get(p, "⚪")
-
-def status_dot(s):
-    colors = {"未開始": "⚪", "進行中": "🔵", "已完成": "🟢"}
-    return f"{colors.get(s,'')} {s}"
-
-# ── 主畫面 ────────────────────────────────────────────
-st.markdown("## 📋 BPM Team Dashboard")
-st.caption(f"資料來源：Notion BPM Team · 更新時間：{pd.Timestamp.now().strftime('%m/%d %H:%M')}")
-
-col_refresh, _ = st.columns([1, 9])
-with col_refresh:
+# ── 載入資料 ──────────────────────────────────────────
+col1, col2 = st.columns([1, 9])
+with col1:
     if st.button("🔄 更新資料"):
         st.cache_data.clear()
         st.rerun()
 
 with st.spinner("從 Notion 載入資料中..."):
-    df = fetch_all_tasks()
+    tasks, errors = fetch_all_tasks()
 
-if df.empty:
-    st.error("無法載入資料，請確認 Notion Token 和資料庫 ID 是否正確。")
+if errors:
+    for e in errors:
+        st.warning(f"⚠️ {e}")
+
+if not tasks:
+    st.error("無法載入資料，請確認 Notion Token 和資料庫權限。")
     st.stop()
 
-# ── KPI ───────────────────────────────────────────────
-st.divider()
-k1, k2, k3, k4 = st.columns(4)
-total   = len(df)
-in_prog = len(df[df["狀態"] == "進行中"])
-done    = len(df[df["狀態"] == "已完成"])
-dec     = len(df[df["決議"] == "待決議"])
-df["落後天數"] = df.apply(lambda r: days_late(r["結束"], r["狀態"]), axis=1)
-overdue = len(df[df["落後天數"] > 0])
+# ── 把資料注入 HTML ───────────────────────────────────
+today_str = date.today().isoformat()
+tasks_json = json.dumps(tasks, ensure_ascii=False)
 
-k1.metric("📋 總任務", total)
-k2.metric("⏳ 進行中", in_prog)
-k3.metric("⚠️ 待決議", dec,  delta=f"{dec} 筆" if dec else None, delta_color="inverse")
-k4.metric("🔴 落後任務", overdue, delta=f"{overdue} 筆" if overdue else None, delta_color="inverse")
+HTML = f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BPM Team Project Management Dashboard</title>
+<style>
+  :root{{
+    --bg1:#f1f2f9; --bg2:#f6f7fc; --bg3:#faf9fd;
+    --ink:#2b2447; --ink2:#615a7d; --ink3:#938cae;
+    --card:#ffffff; --card2:#f7f7fc;
+    --navy:#2b2447; --purple:#8b7ef0; --purple-soft:#ece8fd;
+    --coral:#f4845f; --coral-soft:#fde6dd; --coral-ink:#c9532e;
+    --blue:#3B9BE8; --blue-soft:#dbeeff;
+    --orange:#f97316; --orange-soft:#ffedd5;
+    --mint:#57c4a3; --mint-soft:#dcf3eb;
+    --red:#e8607a; --red-soft:#fbe1e7; --red-ink:#c23a55;
+    --grey:#b9bccd; --grey-soft:#eceef5;
+    --line:#ecedf4;
+    --shadow:0 18px 40px -22px rgba(43,36,71,.35), 0 2px 6px -2px rgba(43,36,71,.06);
+    --shadow-soft:0 10px 24px -16px rgba(43,36,71,.30);
+    --r:22px; --r-sm:14px;
+    --font:"Inter",system-ui,-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei","Noto Sans TC",sans-serif;
+  }}
+  *{{box-sizing:border-box}}
+  html,body{{margin:0}}
+  body{{
+    font-family:var(--font); color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 12% -8%, #f6f2fd 0%, transparent 55%),
+      radial-gradient(900px 500px at 105% 0%, #eef4fd 0%, transparent 50%),
+      linear-gradient(160deg,var(--bg1),var(--bg2) 45%,var(--bg3));
+    min-height:100vh; padding:26px clamp(14px,3vw,40px) 60px;
+    -webkit-font-smoothing:antialiased;
+  }}
+  .wrap{{max-width:1280px;margin:0 auto}}
+  .topbar{{display:flex;align-items:center;gap:18px;justify-content:space-between;
+    background:linear-gradient(135deg,#ffffff,#f6f5fd);border-radius:var(--r);padding:18px 24px;
+    box-shadow:var(--shadow);margin-bottom:22px;flex-wrap:wrap}}
+  .brand{{display:flex;align-items:center;gap:14px}}
+  .brand h1{{font-size:19px;margin:0;letter-spacing:.2px}}
+  .topmeta{{display:flex;align-items:center;gap:10px;flex-wrap:wrap}}
+  .chip{{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);
+    color:var(--ink2);font-size:12.5px;padding:8px 13px;border-radius:999px;box-shadow:var(--shadow-soft)}}
+  .chip b{{color:var(--ink);font-weight:700}}
+  .dot{{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 4px var(--mint-soft)}}
+  .sec-h{{display:flex;align-items:baseline;gap:10px;margin:26px 4px 13px}}
+  .sec-h h2{{font-size:16px;margin:0;letter-spacing:.2px}}
+  .sec-h span{{font-size:12.5px;color:var(--ink3)}}
+  .grid{{display:grid;gap:18px}}
+  .charts{{grid-template-columns:repeat(4,1fr);align-items:stretch}}
+  .two{{grid-template-columns:1fr 1fr}}
+  @media(max-width:980px){{.charts{{grid-template-columns:1fr}}.two{{grid-template-columns:1fr}}.charts .card[style*="span"]{{grid-column:span 1}}}}
+  @media(max-width:560px){{.charts{{grid-template-columns:1fr}}}}
+  .card{{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:20px 22px}}
+  .card-donut{{display:flex;flex-direction:column}}
+  .card-h{{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}}
+  .card-h h3{{font-size:14.5px;margin:0}}
+  .card-h .hint{{font-size:11.5px;color:var(--ink3)}}
+  .kpi{{position:relative;overflow:hidden;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:18px 20px}}
+  .kpi .ico{{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;margin-bottom:14px}}
+  .kpi .ico svg{{width:19px;height:19px}}
+  .kpi .num{{font-size:38px;font-weight:800;line-height:1;letter-spacing:-.5px}}
+  .kpi .lbl{{font-size:13px;color:var(--ink2);margin-top:7px;font-weight:600}}
+  .kpi .sub{{font-size:11.5px;color:var(--ink3);margin-top:3px}}
+  .kpi.alert{{background:linear-gradient(160deg,#fff,var(--red-soft))}}
+  .kpi.warn{{background:linear-gradient(160deg,#fff,var(--coral-soft))}}
+  .i-navy{{background:var(--purple-soft);color:var(--purple)}}
+  .i-blue{{background:var(--orange-soft);color:var(--orange)}}
+  .i-coral{{background:var(--coral-soft);color:var(--coral-ink)}}
+  .i-red{{background:var(--red-soft);color:var(--red-ink)}}
+  .donut-wrap{{display:flex;align-items:center;gap:18px;flex:1}}
+  .donut{{position:relative;width:150px;height:150px;flex:none}}
+  .rate-body{{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;flex:1;padding:12px 0 16px}}
+  .rate-num{{font-size:88px;font-weight:900;letter-spacing:-4px;line-height:1;background:linear-gradient(135deg,var(--purple),var(--blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}}
+  .rate-sub{{display:flex;gap:24px;margin-top:6px}}
+  .rate-sub-item{{display:flex;flex-direction:column;align-items:center;gap:3px}}
+  .rate-sub-item .rn{{font-size:22px;font-weight:800}}
+  .rate-sub-item .rl{{font-size:11px;color:var(--ink3)}}
+  .donut .center{{position:absolute;inset:0;display:grid;place-content:center;text-align:center}}
+  .donut .center b{{font-size:30px;font-weight:800;letter-spacing:-.5px}}
+  .donut .center small{{display:block;font-size:11px;color:var(--ink3);margin-top:1px}}
+  .legend{{display:flex;flex-direction:column;gap:9px;width:100px;flex:none}}
+  .legend .row{{display:flex;align-items:center;gap:6px;font-size:11px}}
+  .legend .sw{{width:9px;height:9px;border-radius:3px;flex:none}}
+  .legend .row .v{{margin-left:auto;font-weight:700;color:var(--ink)}}
+  .legend .row .p{{color:var(--ink3);font-size:11.5px;width:42px;text-align:right}}
+  .bars{{display:flex;flex-direction:column;gap:13px;margin-top:4px}}
+  .bar-row .top{{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px}}
+  .bar-row .top .name{{color:var(--ink2);font-weight:600}}
+  .bar-row .top .val{{color:var(--ink);font-weight:700}}
+  .track{{height:13px;border-radius:999px;background:var(--grey-soft);overflow:hidden;display:flex}}
+  .track > span{{height:100%;display:block}}
+  .track.bare{{background:transparent;overflow:visible}}
+  .track.bare > span{{border-radius:999px}}
+  table{{width:100%;border-collapse:collapse}}
+  th{{font-size:11.5px;color:var(--ink3);text-align:left;font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle}}
+  td{{font-size:13px;padding:11px 10px;border-bottom:1px solid var(--line);vertical-align:middle}}
+  tr:last-child td{{border-bottom:none}}
+  .tg{{display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;font-weight:600;white-space:nowrap}}
+  .tg.proj{{background:var(--purple-soft);color:#6c5fd0}}
+  .tg.hi{{background:var(--red-soft);color:var(--red-ink)}}
+  .tg.mid{{background:var(--coral-soft);color:var(--coral-ink)}}
+  .tg.lo{{background:var(--grey-soft);color:var(--ink2)}}
+  .late{{color:var(--red-ink);font-weight:700}}
+  .empty{{text-align:center;padding:26px 10px;color:var(--ink3)}}
+  .empty .big{{font-size:15px;color:var(--ink2);font-weight:700;margin-bottom:4px}}
+  .empty .sm{{font-size:12.5px}}
+  .proj{{border:1px solid var(--line);border-radius:var(--r-sm);margin-bottom:11px;overflow:hidden;background:var(--card2)}}
+  .proj:last-child{{margin-bottom:0}}
+  .proj-head{{display:flex;align-items:center;gap:14px;padding:15px 17px;cursor:pointer;user-select:none}}
+  .proj-head:hover{{background:#f1f0f9}}
+  .proj-head .chev{{transition:transform .25s;color:var(--ink3);flex:none}}
+  .proj.open .chev{{transform:rotate(90deg)}}
+  .proj-head .pname{{font-weight:700;font-size:14px}}
+  .proj-head .pmeta{{font-size:11.5px;color:var(--ink3);margin-top:2px}}
+  .proj-prog{{margin-left:auto;display:flex;align-items:center;gap:12px;min-width:170px}}
+  .proj-prog .ptrack{{flex:1;height:9px;border-radius:999px;background:#e7e7f0;overflow:hidden}}
+  .proj-prog .pfill{{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--purple),var(--blue))}}
+  .proj-prog .ppct{{font-weight:800;font-size:14px;width:42px;text-align:right}}
+  .proj-body{{display:none;padding:2px 8px 8px;background:#fff}}
+  .proj.open .proj-body{{display:block}}
+  .st{{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}}
+  .st .sdot{{width:8px;height:8px;border-radius:50%}}
+  .mini{{height:7px;width:70px;border-radius:999px;background:var(--grey-soft);overflow:hidden;display:inline-block;vertical-align:middle}}
+  .mini > i{{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--blue))}}
+  .kanban{{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}}
+  @media(max-width:860px){{.kanban{{grid-template-columns:1fr}}}}
+  .col{{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:15px 14px;display:flex;flex-direction:column}}
+  .col-h{{display:flex;align-items:center;gap:9px;margin-bottom:13px;padding:0 4px}}
+  .col-h .sdot{{width:10px;height:10px;border-radius:50%}}
+  .col-h h3{{font-size:14px;margin:0}}
+  .col-h .cnt{{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink2);background:var(--grey-soft);padding:2px 10px;border-radius:999px}}
+  .col-body{{display:flex;flex-direction:column;gap:11px;max-height:430px;overflow:auto;padding:2px}}
+  .kc{{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-sm);padding:13px 13px;border-left:3px solid var(--grey)}}
+  .kc .kt{{font-weight:700;font-size:13.5px}}
+  .kc .kp{{font-size:11px;color:var(--ink3);margin-top:3px}}
+  .kc .kfoot{{display:flex;align-items:center;gap:9px;margin-top:11px}}
+  .kc .kfoot .mini{{width:auto;flex:1}}
+  .kc .kt-row{{display:flex;align-items:center;justify-content:space-between;gap:10px}}
+  .kc .kt-row .kt{{min-width:0}}
+  .kc .kt-row .tg{{flex:none}}
+  .kc .kpct{{font-size:11px;font-weight:700;color:var(--ink2)}}
+  .col-body .empty{{padding:20px 6px}}
+  .foot{{margin-top:30px;text-align:center;color:var(--ink3);font-size:12px;line-height:1.7}}
+  .owner-tabs-wrap{{display:flex;align-items:flex-end;gap:0;padding:0 0 0 4px;position:relative;z-index:1;margin-top:0}}
+  .owner-tab{{position:relative;min-width:110px;padding:9px 20px 10px;font-size:13.5px;font-weight:600;color:var(--ink3);cursor:pointer;background:var(--grey-soft);border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;margin-right:-1px;transition:background .15s,color .15s;white-space:nowrap;user-select:none;display:inline-flex;align-items:center;gap:8px;z-index:1}}
+  .owner-tab:hover{{background:#eeedf7;color:var(--ink2)}}
+  .owner-tab.active{{background:var(--card);color:var(--ink);border-color:var(--line);z-index:3;margin-bottom:-1px;padding-bottom:11px}}
+  .owner-tab .tcnt{{display:inline-block;font-size:11px;font-weight:700;background:var(--grey-soft);color:var(--ink3);border-radius:999px;padding:1px 8px;}}
+  .owner-tab.active .tcnt{{background:var(--purple-soft);color:var(--purple)}}
+  .owner-panel{{background:var(--card);border-radius:0 var(--r) var(--r) var(--r);border:1px solid var(--line);box-shadow:var(--shadow);padding:4px 22px 20px;position:relative;z-index:2}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div><h1>BPM Team Project Management Dashboard</h1></div>
+    </div>
+    <div class="topmeta">
+      <span class="chip"><span class="dot"></span>資料快照 <b id="snap"></b></span>
+      <span class="chip">總專案數 <b id="projcount"></b></span>
+    </div>
+  </div>
+  <div class="sec-h"><h2>Overview</h2></div>
+  <div class="grid charts">
+    <div id="kpis" style="display:contents"></div>
+    <div class="card card-donut">
+      <div class="card-h"><h3>完成率</h3></div>
+      <div class="rate-body">
+        <div class="rate-num" id="donutpct"></div>
+        <div class="rate-sub">
+          <div class="rate-sub-item"><span class="rn" style="color:var(--blue)" id="ratedoneval"></span><span class="rl">已完成</span></div>
+          <div class="rate-sub-item"><span class="rn" style="color:var(--ink3)" id="ratetotal"></span><span class="rl">總任務</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="card card-donut">
+      <div class="card-h"><h3>狀態分佈</h3></div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;flex:1;justify-content:center">
+        <div class="donut" style="width:190px;height:190px"><svg id="donut" viewBox="0 0 160 160" width="190" height="190"></svg>
+          <div class="center"><b id="donutcenter"></b><small>總任務</small></div>
+        </div>
+        <div class="legend" id="donutlegend" style="width:auto;flex-direction:row;gap:12px;font-size:11px"></div>
+      </div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>各專案任務數</h3></div>
+      <div class="bars" id="projbars"></div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>🔴 須優先決議</h3></div>
+      <div id="decision"></div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>⚠️ 進度異常</h3><span class="hint">已逾結束日且未完成</span></div>
+      <div id="overdue"></div>
+    </div>
+  </div>
+  <div class="sec-h"><h2>專案進度總覽</h2><span>點擊專案可展開任務明細</span></div>
+  <div class="card"><div id="projects"></div></div>
+  <div class="sec-h"><h2>各負責人任務</h2></div>
+  <div class="owner-tabs-wrap" id="ownerTabs"></div>
+  <div class="owner-panel" id="ownerPanel"></div>
+  <div class="sec-h"><h2>工作看板</h2></div>
+  <div class="kanban" id="kanban"></div>
+  <div class="foot">
+    指標依定義即時計算：完成率＝已完成÷總任務；專案進度＝該專案各任務進度平均（含未開始）；落後＝結束日早於今日且未完成。<br>
+    資料來源 Notion · BPM Team teamspace。
+  </div>
+</div>
 
-# ── 狀態分佈長條圖 ────────────────────────────────────
-st.divider()
-c1, c2 = st.columns(2)
+<script>
+const SNAPSHOT_DATE = "{today_str}";
+const TASKS = {tasks_json};
 
-with c1:
-    st.markdown("**完成率與狀態分佈**")
-    status_counts = df["狀態"].value_counts().reset_index()
-    status_counts.columns = ["狀態", "數量"]
-    st.bar_chart(status_counts.set_index("狀態"), color="#6aa6f5")
+const PHASE = {{"需求確認":1,"Kick-off 會議":2,"Kick-off Meeting":2,"報價單簽回":3,"採購和付款方式確認":3,"開發":4,"部署":5,"UAT":6,"KUT":7,"技轉和驗收":8}};
+function taskOrder(a,b){{
+  if(a.end && b.end) return a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+  if(a.end && !b.end) return -1;
+  if(!a.end && b.end) return 1;
+  return (PHASE[a.task]||99)-(PHASE[b.task]||99);
+}}
+const STC = {{"未開始":"var(--grey)","進行中":"var(--orange)","已完成":"var(--blue)"}};
+const today = new Date(SNAPSHOT_DATE+"T00:00:00+08:00");
+const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({{" &":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}}[c]));
+const prioCls = p => p==="高"?"hi":p==="中"?"mid":"lo";
+function daysLate(end){{ const d=new Date(end+"T00:00:00+08:00"); return Math.round((today-d)/86400000); }}
+function whoCell(owner){{
+  if(!owner) return '<span style="color:var(--ink3)">未指派</span>';
+  return esc(owner);
+}}
+function stPill(s){{ return '<span class="st"><span class="sdot" style="background:'+STC[s]+'"></span>'+s+'</span>'; }}
 
-with c2:
-    st.markdown("**各專案任務數**")
-    proj_counts = df["專案"].value_counts().reset_index()
-    proj_counts.columns = ["專案", "數量"]
-    st.bar_chart(proj_counts.set_index("專案"), color="#8b7ef0")
+const total = TASKS.length;
+const cnt = s => TASKS.filter(t=>t.status===s).length;
+const nInProg = cnt("進行中"), nDone = cnt("已完成"), nTodo = cnt("未開始");
+const doneRate = Math.round(nDone/total*100);
+const decisionList = TASKS.filter(t=>t.decide==="待決議");
+const overdueList = TASKS.filter(t=>t.end && t.status!=="已完成" && daysLate(t.end)>0).sort((a,b)=>daysLate(b.end)-daysLate(a.end));
+const projOrder=[]; const projMap={{}};
+TASKS.forEach(t=>{{ if(!projMap[t.proj]){{projMap[t.proj]=[];projOrder.push(t.proj);}} projMap[t.proj].push(t); }});
+const projects = projOrder.map(name=>{{
+  const ts=projMap[name];
+  const avg=Math.round(ts.reduce((s,t)=>s+t.progress,0)/ts.length);
+  return {{name, tasks:ts, avg, n:ts.length}};
+}});
 
-# ── 待決議 ────────────────────────────────────────────
-st.divider()
-st.markdown("### ⚠️ 須優先決議")
-dec_df = df[df["決議"] == "待決議"][["專案", "任務", "負責人", "說明"]]
-if dec_df.empty:
-    st.success("目前沒有待決議事項")
-else:
-    st.dataframe(dec_df, use_container_width=True, hide_index=True)
+document.getElementById("snap").textContent = SNAPSHOT_DATE;
+document.getElementById("projcount").textContent = projects.length + " 個";
+document.getElementById("donutpct").textContent = doneRate + "%";
+document.getElementById("ratedoneval").textContent = nDone;
+document.getElementById("ratetotal").textContent = total;
+document.getElementById("donutcenter").textContent = total;
 
-# ── 落後任務 ──────────────────────────────────────────
-st.markdown("### 🕐 進度異常（已逾結束日）")
-ov_df = df[df["落後天數"] > 0][["專案", "任務", "負責人", "結束", "落後天數"]].sort_values("落後天數", ascending=False)
-if ov_df.empty:
-    st.success("目前沒有落後任務")
-else:
-    st.dataframe(ov_df, use_container_width=True, hide_index=True)
+(function(){{
+  const segs=[{{k:"已完成",v:nDone}},{{k:"進行中",v:nInProg}},{{k:"未開始",v:nTodo}}];
+  const r=64, cx=80, cy=80, C=2*Math.PI*r; let off=0;
+  let svg='';
+  segs.forEach(s=>{{ if(s.v<=0) return; const len=s.v/total*C;
+    svg+=`<circle cx="${{cx}}" cy="${{cy}}" r="${{r}}" fill="none" stroke="${{STC[s.k]}}" stroke-width="20"
+            stroke-dasharray="${{len}} ${{C-len}}" stroke-dashoffset="${{-off}}"
+            transform="rotate(-90 ${{cx}} ${{cy}})" stroke-linecap="butt"/>`;
+    off+=len; }});
+  document.getElementById("donut").innerHTML=svg;
+  document.getElementById("donutlegend").innerHTML=segs.map(s=>`
+    <div class="row"><span class="sw" style="background:${{STC[s.k]}}"></span>${{s.k}}
+      <span class="v">${{s.v}}</span></div>`).join("");
+}})();
 
-# ── 各專案明細 ────────────────────────────────────────
-st.divider()
-st.markdown("### 📁 專案進度總覽")
-for proj in DBS.keys():
-    proj_df = df[df["專案"] == proj]
-    if proj_df.empty:
-        continue
-    done_n = len(proj_df[proj_df["狀態"] == "已完成"])
-    prog_n = len(proj_df[proj_df["狀態"] == "進行中"])
-    avg_prog = int(proj_df["進度"].mean())
-    with st.expander(f"**{proj}**　｜　{len(proj_df)} 個任務　·　完成 {done_n}　·　進行中 {prog_n}　·　平均進度 {avg_prog}%"):
-        display_df = proj_df[["任務", "負責人", "狀態", "進度", "結束", "優先", "決議"]].copy()
-        display_df["狀態"] = display_df["狀態"].apply(status_dot)
-        display_df["優先"] = display_df["優先"].apply(lambda p: f"{prio_color(p)} {p}")
-        display_df["進度"] = display_df["進度"].apply(lambda v: f"{v}%")
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+const maxN=Math.max(...projects.map(p=>p.n));
+(function(){{
+  const legendHTML=`<div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+    ${{[["未開始","#b9bccd"],["進行中","#f97316"],["已完成","#3B9BE8"]].map(([k,c])=>
+      `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink2)">
+        <span style="width:10px;height:10px;border-radius:3px;background:${{c}};flex:none"></span>${{k}}</span>`).join("")}}
+  </div>`;
+  const barsHTML=projects.map(p=>{{
+    const nTd=p.tasks.filter(t=>t.status==="未開始").length;
+    const nIp=p.tasks.filter(t=>t.status==="進行中").length;
+    const nDn=p.tasks.filter(t=>t.status==="已完成").length;
+    const pTd=maxN?nTd/maxN*100:0, pIp=maxN?nIp/maxN*100:0, pDn=maxN?nDn/maxN*100:0;
+    const segs=[];let cum=0;
+    if(nTd){{segs.push(`#b9bccd ${{cum}}% ${{cum+pTd}}%`);cum+=pTd;}}
+    if(nIp){{segs.push(`#f97316 ${{cum}}% ${{cum+pIp}}%`);cum+=pIp;}}
+    if(nDn){{segs.push(`#3B9BE8 ${{cum}}% ${{cum+pDn}}%`);cum+=pDn;}}
+    const grad=segs.length?`linear-gradient(90deg,${{segs.join(",")}})`:'';;
+    return `<div class="bar-row">
+      <div class="top"><span class="name">${{esc(p.name)}}</span><span class="val">${{p.n}} 筆</span></div>
+      <div class="track bare"><span style="width:${{cum}}%;background:${{grad}};border-radius:999px"></span></div>
+    </div>`;
+  }}).join("");
+  document.getElementById("projbars").insertAdjacentHTML("beforeend", legendHTML+barsHTML);
+}})();
 
-# ── 看板 ──────────────────────────────────────────────
-st.divider()
-st.markdown("### 🗂️ 工作看板")
-cols = st.columns(3)
-for i, status in enumerate(["未開始", "進行中", "已完成"]):
-    with cols[i]:
-        items = df[df["狀態"] == status]
-        st.markdown(f"**{status}** `{len(items)}`")
-        for _, row in items.iterrows():
-            with st.container(border=True):
-                st.markdown(f"**{row['任務']}**")
-                st.caption(f"{row['專案']}")
-                if status == "進行中":
-                    st.progress(int(row["進度"]) / 100)
-                    st.caption(f"{prio_color(row['優先'])} {row['優先']}　{row['進度']}%")
+document.getElementById("decision").innerHTML = decisionList.length ? `
+  <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>待決議事項</th></tr></thead><tbody>
+  ${{decisionList.map(t=>`<tr>
+    <td><span class="tg proj">${{esc(t.proj)}}</span></td>
+    <td>${{esc(t.task)}}</td><td>${{whoCell(t.owner)}}</td>
+    <td>${{esc(t.note)||'<span style="color:var(--ink3)">（未填說明）</span>'}}</td></tr>`).join("")}}
+  </tbody></table>` : `<div class="empty"><div class="big">目前沒有待決議事項</div></div>`;
+
+document.getElementById("overdue").innerHTML = overdueList.length ? `
+  <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>預計完成</th><th>落後</th></tr></thead><tbody>
+  ${{overdueList.map(t=>`<tr>
+    <td><span class="tg proj">${{esc(t.proj)}}</span></td>
+    <td>${{esc(t.task)}}</td><td>${{whoCell(t.owner)}}</td>
+    <td>${{esc(t.end)}}</td><td class="late">${{daysLate(t.end)}} 天</td></tr>`).join("")}}
+  </tbody></table>` : `<div class="empty"><div class="big">目前沒有落後任務</div></div>`;
+
+document.getElementById("projects").innerHTML = projects.map((p,i)=>`
+  <div class="proj" id="proj${{i}}">
+    <div class="proj-head" onclick="document.getElementById('proj${{i}}').classList.toggle('open')">
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><div class="pname">${{esc(p.name)}}</div>
+        <div class="pmeta">${{p.n}} 個任務 · 已完成 ${{p.tasks.filter(t=>t.status==="已完成").length}} · 進行中 ${{p.tasks.filter(t=>t.status==="進行中").length}}</div></div>
+      <div class="proj-prog">
+        <div class="ptrack"><div class="pfill" style="width:${{p.avg}}%"></div></div>
+        <div class="ppct">${{p.avg}}%</div>
+      </div>
+    </div>
+    <div class="proj-body">
+      <table><thead><tr><th>任務</th><th>負責人</th><th>狀態</th><th>進度</th><th>結束日</th><th>優先</th></tr></thead><tbody>
+      ${{p.tasks.slice().sort(taskOrder).map(t=>`<tr>
+        <td>${{esc(t.task)}}${{t.decide==="待決議"?' <span class="tg hi">待決議</span>':t.decide==="已決議"?' <span class="tg lo">已決議</span>':''}}</td>
+        <td>${{whoCell(t.owner)}}</td><td>${{stPill(t.status)}}</td>
+        <td><span class="mini"><i style="width:${{t.progress}}%"></i></span> <span style="font-size:12px;font-weight:700">${{t.progress}}%</span></td>
+        <td>${{t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}}${{t.end&&t.status!=="已完成"&&daysLate(t.end)>0?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}}</td>
+        <td><span class="tg ${{prioCls(t.prio)}}">${{t.prio}}</span></td></tr>`).join("")}}
+      </tbody></table>
+    </div>
+  </div>`).join("");
+
+document.getElementById("kanban").innerHTML = ["未開始","進行中","已完成"].map(st=>{{
+  const items=TASKS.filter(t=>t.status===st);
+  const cards = items.length ? items.map(t=> st==="進行中"
+    ? `<div class="kc" style="border-left-color:${{STC[st]}}">
+      <div class="kt">${{esc(t.task)}}</div>
+      <div class="kp">${{esc(t.proj)}}</div>
+      <div class="kfoot">
+        <span class="tg ${{prioCls(t.prio)}}">${{t.prio}}</span>
+        <span class="mini"><i style="width:${{t.progress}}%"></i></span>
+        <span class="kpct">${{t.progress}}%</span>
+      </div>
+    </div>`
+    : `<div class="kc" style="border-left-color:${{STC[st]}}">
+      <div class="kt-row"><span class="kt">${{esc(t.task)}}</span><span class="tg ${{prioCls(t.prio)}}">${{t.prio}}</span></div>
+      <div class="kp">${{esc(t.proj)}}</div>
+    </div>`).join("")
+   : '<div class="empty"><div class="sm">此欄目前沒有任務</div></div>';
+  return `<div class="col">
+    <div class="col-h"><span class="sdot" style="background:${{STC[st]}}"></span><h3>${{st}}</h3><span class="cnt">${{items.length}}</span></div>
+    <div class="col-body">${{cards}}</div>
+  </div>`;
+}}).join("");
+
+(function(){{
+  const OWNERS=["Larry","Harry","Cindy"];
+  function ownerTasks(name){{
+    return TASKS.filter(t=>t.owner&&t.owner.split(",").map(s=>s.trim()).includes(name))
+      .slice().sort(taskOrder);
+  }}
+  function ownerTable(tasks){{
+    if(!tasks.length) return '<div class="empty"><div class="sm">此人目前沒有任務</div></div>';
+    return `<table><thead><tr><th>專案</th><th>任務</th><th>狀態</th><th>進度</th><th>結束日</th></tr></thead><tbody>
+    ${{tasks.map(t=>`<tr>
+      <td><span class="tg proj">${{esc(t.proj)}}</span></td>
+      <td>${{esc(t.task)}}${{t.decide==="待決議"?' <span class="tg hi">待決議</span>':''}}</td>
+      <td>${{stPill(t.status)}}</td>
+      <td><span class="mini"><i style="width:${{t.progress}}%"></i></span> <span style="font-size:12px;font-weight:700">${{t.progress}}%</span></td>
+      <td>${{t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}}${{t.end&&t.status!=="已完成"&&daysLate(t.end)>0?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}}</td>
+    </tr>`).join("")}}</tbody></table>`;
+  }}
+  const tabsEl=document.getElementById("ownerTabs");
+  const panelEl=document.getElementById("ownerPanel");
+  const allTasks=OWNERS.map(ownerTasks);
+  tabsEl.innerHTML=OWNERS.map((n,i)=>`<div class="owner-tab${{i===0?" active":""}}" data-i="${{i}}">${{n}}<span class="tcnt">${{allTasks[i].length}}</span></div>`).join("");
+  panelEl.innerHTML=ownerTable(allTasks[0]);
+  tabsEl.addEventListener("click",function(e){{
+    const tab=e.target.closest(".owner-tab");
+    if(!tab) return;
+    const i=+tab.dataset.i;
+    tabsEl.querySelectorAll(".owner-tab").forEach((t,j)=>t.classList.toggle("active",j===i));
+    panelEl.innerHTML=ownerTable(allTasks[i]);
+  }});
+}})();
+</script>
+</body>
+</html>"""
+
+components.html(HTML, height=3200, scrolling=True)
