@@ -1,174 +1,172 @@
 import streamlit as st
-import requests
+from notion_client import Client
 import pandas as pd
+from datetime import date
 
-st.set_page_config(page_title="BPM Team Dashboard", layout="wide")
+# ── 頁面設定 ──────────────────────────────────────────
+st.set_page_config(page_title="BPM Team Dashboard", layout="wide", page_icon="📋")
 
-st.title("💼 BPM Team Dashboard (Notion 即時同步版)")
-st.caption("後端 Python 直連，已完美對齊您的 Notion 實際欄位")
+# ── Notion 設定 ───────────────────────────────────────
+NOTION_TOKEN = st.secrets["NOTION_TOKEN"]  # 放在 .streamlit/secrets.toml
+DBS = {
+    "ALPT ALPSG BPM 導入專案": "38146c131ee380938377fc08df63428b",
+    "ALPM BPM 優化專案":       "38146c131ee38099ae66cdae04e36c92",
+    "BPM 多語系專案":           "38146c131ee3809ebe63db8f72fb615d",
+    "Ad-Hoc Project":          "38246c131ee3803299c4f30c7d3960f3",
+}
+STC = {"未開始": "#b9bccd", "進行中": "#6aa6f5", "已完成": "#57c4a3"}
 
-# 1. 安全密鑰
-DEFAULT_TOKEN = "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"
+# ── 資料拉取 ──────────────────────────────────────────
+@st.cache_data(ttl=300)  # 快取 5 分鐘
+def fetch_all_tasks():
+    notion = Client(auth=NOTION_TOKEN)
+    tasks = []
+    for proj_name, db_id in DBS.items():
+        try:
+            results = notion.databases.query(database_id=db_id)["results"]
+            for page in results:
+                p = page["properties"]
+                def txt(key):
+                    v = p.get(key, {})
+                    t = v.get("type")
+                    if t == "title":   return "".join(r["plain_text"] for r in v.get("title", []))
+                    if t == "rich_text": return "".join(r["plain_text"] for r in v.get("rich_text", []))
+                    if t == "select":  return (v.get("select") or {}).get("name", "")
+                    if t == "status":  return (v.get("status") or {}).get("name", "")
+                    if t == "date":    return (v.get("date") or {}).get("start")
+                    if t == "number":  return v.get("number")
+                    return ""
 
-st.sidebar.header("🔑 Notion 連線設定")
-project_choice = st.sidebar.selectbox(
-    "📂 請選擇要同步的專案資料庫",
-    ["BPM 多語系專案", "ALPM BPM 優化專案", "ALPT ALPSG BPM 導入專案", "Ad-Hoc Project"]
-)
+                task_name = txt("任務名稱") or txt("專案名稱")
+                start_val = txt("起始值") if txt("起始值") is not None else p.get("起始值", {}).get("number", 0) or 0
+                end_val   = txt("結束值") if txt("結束值") is not None else p.get("結束值", {}).get("number", 100) or 100
+                status    = txt("狀態")
+                progress  = 100 if status == "已完成" else (0 if status == "未開始" else round(start_val / end_val * 100) if end_val else 0)
 
-if project_choice == "BPM 多語系專案":
-    DEFAULT_DB_ID = "38146c131ee3809ebe63db8f72fb615d"
-elif project_choice == "ALPM BPM 優化專案":
-    DEFAULT_DB_ID = "38146c131ee38099ae66cdae04e36c92"
-elif project_choice == "ALPT ALPSG BPM 導入專案":
-    DEFAULT_DB_ID = "38146c131ee380938377fc08df63428b"
+                tasks.append({
+                    "專案":   proj_name,
+                    "任務":   task_name,
+                    "負責人": txt("負責人"),
+                    "優先":   txt("優先順序"),
+                    "狀態":   status,
+                    "開始":   txt("開始日期"),
+                    "結束":   txt("結束日期"),
+                    "進度":   progress,
+                    "決議":   txt("須優先決議"),
+                    "說明":   txt("決議事項說明"),
+                })
+        except Exception as e:
+            st.warning(f"⚠️ {proj_name} 讀取失敗：{e}")
+    return pd.DataFrame(tasks)
+
+# ── 工具函式 ──────────────────────────────────────────
+def days_late(end_str, status):
+    if not end_str or status == "已完成":
+        return 0
+    delta = (date.today() - date.fromisoformat(end_str)).days
+    return delta if delta > 0 else 0
+
+def prio_color(p):
+    return {"高": "🔴", "中": "🟡", "低": "🟢"}.get(p, "⚪")
+
+def status_dot(s):
+    colors = {"未開始": "⚪", "進行中": "🔵", "已完成": "🟢"}
+    return f"{colors.get(s,'')} {s}"
+
+# ── 主畫面 ────────────────────────────────────────────
+st.markdown("## 📋 BPM Team Dashboard")
+st.caption(f"資料來源：Notion BPM Team · 更新時間：{pd.Timestamp.now().strftime('%m/%d %H:%M')}")
+
+col_refresh, _ = st.columns([1, 9])
+with col_refresh:
+    if st.button("🔄 更新資料"):
+        st.cache_data.clear()
+        st.rerun()
+
+with st.spinner("從 Notion 載入資料中..."):
+    df = fetch_all_tasks()
+
+if df.empty:
+    st.error("無法載入資料，請確認 Notion Token 和資料庫 ID 是否正確。")
+    st.stop()
+
+# ── KPI ───────────────────────────────────────────────
+st.divider()
+k1, k2, k3, k4 = st.columns(4)
+total   = len(df)
+in_prog = len(df[df["狀態"] == "進行中"])
+done    = len(df[df["狀態"] == "已完成"])
+dec     = len(df[df["決議"] == "待決議"])
+df["落後天數"] = df.apply(lambda r: days_late(r["結束"], r["狀態"]), axis=1)
+overdue = len(df[df["落後天數"] > 0])
+
+k1.metric("📋 總任務", total)
+k2.metric("⏳ 進行中", in_prog)
+k3.metric("⚠️ 待決議", dec,  delta=f"{dec} 筆" if dec else None, delta_color="inverse")
+k4.metric("🔴 落後任務", overdue, delta=f"{overdue} 筆" if overdue else None, delta_color="inverse")
+
+# ── 狀態分佈長條圖 ────────────────────────────────────
+st.divider()
+c1, c2 = st.columns(2)
+
+with c1:
+    st.markdown("**完成率與狀態分佈**")
+    status_counts = df["狀態"].value_counts().reset_index()
+    status_counts.columns = ["狀態", "數量"]
+    st.bar_chart(status_counts.set_index("狀態"), color="#6aa6f5")
+
+with c2:
+    st.markdown("**各專案任務數**")
+    proj_counts = df["專案"].value_counts().reset_index()
+    proj_counts.columns = ["專案", "數量"]
+    st.bar_chart(proj_counts.set_index("專案"), color="#8b7ef0")
+
+# ── 待決議 ────────────────────────────────────────────
+st.divider()
+st.markdown("### ⚠️ 須優先決議")
+dec_df = df[df["決議"] == "待決議"][["專案", "任務", "負責人", "說明"]]
+if dec_df.empty:
+    st.success("目前沒有待決議事項")
 else:
-    DEFAULT_DB_ID = "38246c131ee3803299c4f30c7d3960f3"
+    st.dataframe(dec_df, use_container_width=True, hide_index=True)
 
-NOTION_TOKEN = st.sidebar.text_input("Notion Secret Token", value=DEFAULT_TOKEN, type="password").strip()
-DATABASE_ID = st.sidebar.text_input("Database ID", value=DEFAULT_DB_ID).strip()
-
-def fetch_notion_data(token, db_id):
-    url = f"https://api.notion.com/v1/databases/{db_id}/query"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json"
-    }
-    # 修正語法錯誤：直接 return 請求結果
-    return requests.post(url, headers=headers, json={})
-
-# 💡 精準解讀 Notion 欄位格式
-def parse_notion_to_dataframe(raw_data):
-    results = raw_data.get("results", [])
-    parsed_list = []
-    
-    for page in results:
-        properties = page.get("properties", {})
-        
-        # 1. 任務名稱 (Title)
-        title_obj = properties.get("任務名稱", {})
-        title = title_obj["title"][0].get("plain_text", "") if title_obj.get("title") else ""
-            
-        # 2. 負責人 (Multi-select 或 People)
-        people_obj = properties.get("負責人", {})
-        people = "-"
-        if people_obj:
-            if people_obj.get("people"):
-                people = ", ".join([p.get("name", "") for p in people_obj["people"]])
-            elif people_obj.get("multi_select"):
-                people = ", ".join([p.get("name", "") for p in people_obj["multi_select"]])
-                
-        # 3. 優先順序 (Select)
-        priority_obj = properties.get("優先順序", {})
-        priority = priority_obj["select"].get("name", "-") if priority_obj.get("select") else "-"
-            
-        # 4. 狀態 (Status)
-        status_obj = properties.get("狀態", {})
-        status = "未開始"
-        if status_obj:
-            if status_obj.get("status"):
-                status = status_obj["status"].get("name", "未開始")
-            elif status_obj.get("select"):
-                status = status_obj["select"].get("name", "未開始")
-
-        # 5. 進度 (Formula 或 Number)
-        progress_obj = properties.get("進度", {})
-        progress = 0.0
-        if progress_obj:
-            if progress_obj.get("number") is not None:
-                progress = float(progress_obj["number"])
-            elif progress_obj.get("formula"):
-                progress = float(progress_obj["formula"].get("number", 0))
-        # 處理百分比顯示 (如果是像 100 代表 100%，除以 100 方便後續進度條計算)
-        if progress > 1:
-            progress = progress / 100.0
-
-        # 6. 須優先決議 (Select / Status)
-        decision_obj = properties.get("須優先決議", {})
-        decision = "-"
-        if decision_obj and decision_obj.get("select"):
-            decision = decision_obj["select"].get("name", "-")
-            
-        parsed_list.append({
-            "任務名稱": title,
-            "負責人": people,
-            "優先順序": priority,
-            "狀態": status,
-            "進度": progress,
-            "須優先決議": decision
-        })
-        
-    return pd.DataFrame(parsed_list)
-
-# 4. 畫面渲染
-if st.sidebar.button("🔄 立即同步最新資料"):
-    with st.spinner(f"正在抓取【{project_choice}】並繪製圖表中..."):
-        res = fetch_notion_data(NOTION_TOKEN, DATABASE_ID)
-        
-        if res.status_code == 200:
-            raw_data = res.json()
-            df = parse_notion_to_dataframe(raw_data)
-            
-            if not df.empty:
-                st.success(f"✅ 【{project_choice}】數據渲染完成！")
-                
-                # 📊 第一層：數據小卡
-                total_tasks = len(df)
-                completed_tasks = len(df[df["狀態"].isin(["已完成", "Done"])])
-                pending_decisions = len(df[df["須優先決議"].isin(["待決議", "是", "待決議 "])])
-                
-                # 計算整體平均進度
-                avg_progress = df["進度"].mean() if "進度" in df else 0.0
-                
-                col1, col2, col3 = st.columns(3)
-                col1.metric("總任務筆數", f"{total_tasks} 筆")
-                col2.metric("專案整體總進度", f"{int(avg_progress * 100)}%")
-                col3.metric("⚠️ 待決議事項", f"{pending_decisions} 筆", delta="- 需注意" if pending_decisions > 0 else "正常")
-                
-                st.markdown("---")
-                
-                # 📈 第二層：並排排版（左邊圓餅圖分佈、右邊待決議事項）
-                left_col, right_col = st.columns([1, 1])
-                
-                with left_col:
-                    st.subheader("📊 任務狀態分佈")
-                    status_counts = df["狀態"].value_counts()
-                    st.bar_chart(status_counts)
-                    
-                with right_col:
-                    st.subheader("⚠️ 須優先決議清單")
-                    urgent_df = df[df["須優先決議"].isin(["待決議", "是", "待決議 "])][["任務名稱", "負責人", "須優先決議"]]
-                    if not urgent_df.empty:
-                        st.dataframe(urgent_df, use_container_width=True, hide_index=True)
-                    else:
-                        st.success("目前沒有待決議事項，專案推進順利！")
-                
-                st.markdown("---")
-                
-                # 📋 第三層：詳細任務資料表（帶進度條）
-                st.subheader("📋 專案工作總覽明細表")
-                
-                st.data_editor(
-                    df,
-                    column_config={
-                        "進度": st.column_config.ProgressColumn(
-                            "目前進度",
-                            help="從 Notion 同步過來的實際完成百分比",
-                            format="%.0f%%",
-                            min_value=0.0,
-                            max_value=1.0,
-                        ),
-                    },
-                    use_container_width=True,
-                    disabled=True,
-                    hide_index=True
-                )
-                
-            else:
-                st.warning("⚠️ 連線成功，但該資料庫內沒有撈到任何任務資料。")
-        else:
-            st.error(f"❌ Notion API 錯誤：{res.status_code}")
-            st.json(res.json())
+# ── 落後任務 ──────────────────────────────────────────
+st.markdown("### 🕐 進度異常（已逾結束日）")
+ov_df = df[df["落後天數"] > 0][["專案", "任務", "負責人", "結束", "落後天數"]].sort_values("落後天數", ascending=False)
+if ov_df.empty:
+    st.success("目前沒有落後任務")
 else:
-    st.info(f"💡 目前就緒：【{project_choice}】。請點擊左側按鈕，立刻為您還原專案儀表板！")
+    st.dataframe(ov_df, use_container_width=True, hide_index=True)
+
+# ── 各專案明細 ────────────────────────────────────────
+st.divider()
+st.markdown("### 📁 專案進度總覽")
+for proj in DBS.keys():
+    proj_df = df[df["專案"] == proj]
+    if proj_df.empty:
+        continue
+    done_n = len(proj_df[proj_df["狀態"] == "已完成"])
+    prog_n = len(proj_df[proj_df["狀態"] == "進行中"])
+    avg_prog = int(proj_df["進度"].mean())
+    with st.expander(f"**{proj}**　｜　{len(proj_df)} 個任務　·　完成 {done_n}　·　進行中 {prog_n}　·　平均進度 {avg_prog}%"):
+        display_df = proj_df[["任務", "負責人", "狀態", "進度", "結束", "優先", "決議"]].copy()
+        display_df["狀態"] = display_df["狀態"].apply(status_dot)
+        display_df["優先"] = display_df["優先"].apply(lambda p: f"{prio_color(p)} {p}")
+        display_df["進度"] = display_df["進度"].apply(lambda v: f"{v}%")
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ── 看板 ──────────────────────────────────────────────
+st.divider()
+st.markdown("### 🗂️ 工作看板")
+cols = st.columns(3)
+for i, status in enumerate(["未開始", "進行中", "已完成"]):
+    with cols[i]:
+        items = df[df["狀態"] == status]
+        st.markdown(f"**{status}** `{len(items)}`")
+        for _, row in items.iterrows():
+            with st.container(border=True):
+                st.markdown(f"**{row['任務']}**")
+                st.caption(f"{row['專案']}")
+                if status == "進行中":
+                    st.progress(int(row["進度"]) / 100)
+                    st.caption(f"{prio_color(row['優先'])} {row['優先']}　{row['進度']}%")
