@@ -9,16 +9,16 @@ st.caption("後端 Python 直連，完全不受瀏覽器 CORS 限制")
 
 # 1. 側邊欄設定連線資訊
 st.sidebar.header("🔑 Notion 連線設定")
-NOTION_TOKEN = st.sidebar.text_input("Notion Secret Token", type="password", placeholder="secret_...")
-DATABASE_ID = st.sidebar.text_input("Database ID", placeholder="請輸入 32 位元的資料庫 ID")
+# 用 .strip() 強制過濾掉使用者不小心貼進去的空白或換行
+NOTION_TOKEN = st.sidebar.text_input("Notion Secret Token", type="password", placeholder="secret_...").strip()
+DATABASE_ID = st.sidebar.text_input("Database ID", placeholder="請輸入 32 位元的資料庫 ID").strip()
 
 # 2. 定義抓取資料的函式
 def fetch_notion_data(token, db_id):
-    # 注意：Notion 官方標準 API 端點是 v1，不是 v2
     url = f"https://api.notion.com/v1/databases/{db_id}/query"
     headers = {
         "Authorization": f"Bearer {token}",
-        "Notion-Version": "2022-06-28", # 官方推薦的穩定版本
+        "Notion-Version": "2022-06-28",
         "Content-Type": "application/json"
     }
     
@@ -30,6 +30,9 @@ if st.sidebar.button("🔄 立即同步最新資料"):
     if not NOTION_TOKEN or not DATABASE_ID:
         st.error("❌ 請填寫完整的 Token 與 Database ID！")
     else:
+        # 多加一行除錯顯示，讓你在畫面上親眼確認送出的 ID 是不是乾淨的
+        st.info(f"🔍 目前嘗試連線的 Database ID 長度為 {len(DATABASE_ID)} 碼")
+        
         with st.spinner("正在穿透後端抓取 Notion 資料中..."):
             res = fetch_notion_data(NOTION_TOKEN, DATABASE_ID)
             
@@ -37,11 +40,9 @@ if st.sidebar.button("🔄 立即同步最新資料"):
                 st.success("✅ 資料同步成功！")
                 raw_data = res.json()
                 
-                # 簡單解析範例（你可以根據你的 Notion 欄位再調整）
                 results = raw_data.get("results", [])
                 st.write(f"目前成功撈回 {len(results)} 筆任務資料！")
                 
-                # 顯示原始 JSON 結構供你確認
                 with st.expander("🔍 檢視從 Notion 撈回來的原始資料 (JSON)"):
                     st.json(raw_data)
             else:
