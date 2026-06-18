@@ -23,7 +23,7 @@ def fetch_all_tasks():
     tasks = []
     for proj_name, db_id in DBS.items():
         try:
-            results = notion.databases.query(database_id=db_id)["results"]
+            results = notion.databases.query(db_id)["results"]
             for page in results:
                 p = page["properties"]
                 def txt(key):
