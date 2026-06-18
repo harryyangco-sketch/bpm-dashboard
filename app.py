@@ -1,5 +1,5 @@
 import streamlit as st
-from notion_client import Client
+import requests
 import pandas as pd
 from datetime import date
 
@@ -17,29 +17,38 @@ DBS = {
 STC = {"未開始": "#b9bccd", "進行中": "#6aa6f5", "已完成": "#57c4a3"}
 
 # ── 資料拉取 ──────────────────────────────────────────
-@st.cache_data(ttl=300)  # 快取 5 分鐘
+@st.cache_data(ttl=300)
 def fetch_all_tasks():
-    notion = Client(auth=NOTION_TOKEN)
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": "2022-06-28",
+        "Content-Type": "application/json",
+    }
     tasks = []
     for proj_name, db_id in DBS.items():
         try:
-            results = notion.databases.query(db_id)["results"]
+            url = f"https://api.notion.com/v1/databases/{db_id}/query"
+            res = requests.post(url, headers=headers, json={})
+            res.raise_for_status()
+            results = res.json().get("results", [])
+
             for page in results:
                 p = page["properties"]
+
                 def txt(key):
                     v = p.get(key, {})
                     t = v.get("type")
-                    if t == "title":   return "".join(r["plain_text"] for r in v.get("title", []))
+                    if t == "title":     return "".join(r["plain_text"] for r in v.get("title", []))
                     if t == "rich_text": return "".join(r["plain_text"] for r in v.get("rich_text", []))
-                    if t == "select":  return (v.get("select") or {}).get("name", "")
-                    if t == "status":  return (v.get("status") or {}).get("name", "")
-                    if t == "date":    return (v.get("date") or {}).get("start")
-                    if t == "number":  return v.get("number")
+                    if t == "select":    return (v.get("select") or {}).get("name", "")
+                    if t == "status":    return (v.get("status") or {}).get("name", "")
+                    if t == "date":      return (v.get("date") or {}).get("start")
+                    if t == "number":    return v.get("number")
                     return ""
 
                 task_name = txt("任務名稱") or txt("專案名稱")
-                start_val = txt("起始值") if txt("起始值") is not None else p.get("起始值", {}).get("number", 0) or 0
-                end_val   = txt("結束值") if txt("結束值") is not None else p.get("結束值", {}).get("number", 100) or 100
+                start_val = p.get("起始值", {}).get("number") or 0
+                end_val   = p.get("結束值", {}).get("number") or 100
                 status    = txt("狀態")
                 progress  = 100 if status == "已完成" else (0 if status == "未開始" else round(start_val / end_val * 100) if end_val else 0)
 
