@@ -1,69 +1,51 @@
 import streamlit as st
-from notion_client import Client
+import requests
 import pandas as pd
-from datetime import datetime
 
-st.set_page_config(page_title="BPM Team Dashboard", layout="wide", page_icon="📊")
+st.set_page_config(page_title="BPM Team Dashboard", layout="wide")
 
-st.title("📊 BPM Team Dashboard")
-st.caption("資料來源：Notion · BPM Team teamspace")
+st.title("💼 BPM Team Dashboard (Notion 即時同步版)")
+st.caption("後端 Python 直連，完全不受瀏覽器 CORS 限制")
 
-NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
+# 1. 側邊欄設定連線資訊
+st.sidebar.header("🔑 Notion 連線設定")
+NOTION_TOKEN = st.sidebar.text_input("Notion Secret Token", type="password", placeholder="secret_...")
+DATABASE_ID = st.sidebar.text_input("Database ID", placeholder="請輸入 32 位元的資料庫 ID")
 
-DB_CONFIG = [
-    {"proj": "ALPT ALPSG BPM 導入專案", "id": "38146c131ee380938377fc08df63428b"},
-    {"proj": "ALPM BPM 優化專案", "id": "38146c131ee38099ae66cdae04e36c92"},
-    {"proj": "BPM 多語系專案", "id": "38146c131ee3809ebe63db8f72fb615d"},
-    {"proj": "Ad-Hoc Project", "id": "38246c131ee3803299c4f30c7d3960f3"},   # 已修正
-]
+# 2. 定義抓取資料的函式
+def fetch_notion_data(token, db_id):
+    # 注意：Notion 官方標準 API 端點是 v1，不是 v2
+    url = f"https://api.notion.com/v1/databases/{db_id}/query"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Notion-Version": "2022-06-28", # 官方推薦的穩定版本
+        "Content-Type": "application/json"
+    }
+    
+    response = requests.post(url, headers=headers)
+    return response
 
-if st.button("🔄 更新最新資料", type="primary", use_container_width=True):
-    with st.spinner("正在從 Notion 抓取最新資料..."):
-        try:
-            notion = Client(auth=NOTION_TOKEN)
-            all_tasks = []
-            errors = []
-
-            for db in DB_CONFIG:
-                try:
-                    resp = notion.databases.query(database_id=db["id"], page_size=100)
-                    count = len(resp.get("results", []))
-                    st.info(f"✅ {db['proj']}：抓到 {count} 筆資料")
-                    
-                    for page in resp.get("results", []):
-                        p = page.get("properties", {})
-                        task = {
-                            "專案": db["proj"],
-                            "任務": p.get("任務名稱", {}).get("title", [{}])[0].get("plain_text", "無名稱"),
-                            "負責人": p.get("負責人", {}).get("people", [{}])[0].get("name", "") if p.get("負責人", {}).get("people") else "",
-                            "優先順序": p.get("優先順序", {}).get("select", {}).get("name", "中"),
-                            "狀態": p.get("狀態", {}).get("status", {}).get("name") or p.get("狀態", {}).get("select", {}).get("name", "未開始"),
-                            "開始日期": p.get("開始日期", {}).get("date", {}).get("start"),
-                            "結束日期": p.get("結束日期", {}).get("date", {}).get("start"),
-                            "進度": p.get("進度", {}).get("formula", {}).get("number") or 0,
-                            "須優先決議": p.get("須優先決議", {}).get("select", {}).get("name", "否"),
-                            "決議說明": p.get("決議事項說明", {}).get("rich_text", [{}])[0].get("plain_text", "")
-                        }
-                        all_tasks.append(task)
-                except Exception as e:
-                    errors.append(db["proj"])
-
-            st.session_state.tasks = all_tasks
-            st.session_state.last_update = datetime.now().strftime("%Y/%m/%d %H:%M")
-            st.success(f"✅ 總共抓到 {len(all_tasks)} 筆任務！")
+# 3. 主要互動按鈕
+if st.sidebar.button("🔄 立即同步最新資料"):
+    if not NOTION_TOKEN or not DATABASE_ID:
+        st.error("❌ 請填寫完整的 Token 與 Database ID！")
+    else:
+        with st.spinner("正在穿透後端抓取 Notion 資料中..."):
+            res = fetch_notion_data(NOTION_TOKEN, DATABASE_ID)
             
-            if errors:
-                st.warning("部分專案失敗：" + ", ".join(errors))
+            if res.status_code == 200:
+                st.success("✅ 資料同步成功！")
+                raw_data = res.json()
                 
-        except Exception as e:
-            st.error(f"連線錯誤：{str(e)}")
-
-if "tasks" not in st.session_state:
-    st.info("👆 請點擊上方「更新最新資料」按鈕開始載入")
-    st.stop()
-
-df = pd.DataFrame(st.session_state.tasks)
-st.dataframe(df, use_container_width=True, hide_index=True)
-
-if "last_update" in st.session_state:
-    st.caption(f"最後更新：{st.session_state.last_update}")
+                # 簡單解析範例（你可以根據你的 Notion 欄位再調整）
+                results = raw_data.get("results", [])
+                st.write(f"目前成功撈回 {len(results)} 筆任務資料！")
+                
+                # 顯示原始 JSON 結構供你確認
+                with st.expander("🔍 檢視從 Notion 撈回來的原始資料 (JSON)"):
+                    st.json(raw_data)
+            else:
+                st.error(f"❌ Notion API 回傳錯誤，狀態碼：{res.status_code}")
+                st.json(res.json())
+else:
+    st.info("💡 請在左側輸入您的 Notion 連線資訊，並點擊「立即同步最新資料」按鈕。")
