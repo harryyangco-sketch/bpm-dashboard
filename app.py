@@ -36,4 +36,34 @@ if st.button("🔄 更新最新資料", type="primary", use_container_width=True
                             "專案": db["proj"],
                             "任務": p.get("任務名稱", {}).get("title", [{}])[0].get("plain_text", "無名稱"),
                             "負責人": p.get("負責人", {}).get("people", [{}])[0].get("name", "") if p.get("負責人", {}).get("people") else "",
-                            "優先順序": p.get("優先順序
+                            "優先順序": p.get("優先順序", {}).get("select", {}).get("name", "中"),
+                            "狀態": p.get("狀態", {}).get("status", {}).get("name") or p.get("狀態", {}).get("select", {}).get("name", "未開始"),
+                            "開始日期": p.get("開始日期", {}).get("date", {}).get("start"),
+                            "結束日期": p.get("結束日期", {}).get("date", {}).get("start"),
+                            "進度": p.get("進度", {}).get("formula", {}).get("number") or 0,
+                            "須優先決議": p.get("須優先決議", {}).get("select", {}).get("name", "否"),
+                            "決議說明": p.get("決議事項說明", {}).get("rich_text", [{}])[0].get("plain_text", "")
+                        }
+                        all_tasks.append(task)
+                except Exception as e:
+                    errors.append(db["proj"])
+
+            st.session_state.tasks = all_tasks
+            st.session_state.last_update = datetime.now().strftime("%Y/%m/%d %H:%M")
+            st.success(f"✅ 總共抓到 {len(all_tasks)} 筆任務！")
+            
+            if errors:
+                st.warning("部分專案失敗：" + ", ".join(errors))
+                
+        except Exception as e:
+            st.error(f"連線錯誤：{str(e)}")
+
+if "tasks" not in st.session_state:
+    st.info("👆 請點擊上方「更新最新資料」按鈕開始載入")
+    st.stop()
+
+df = pd.DataFrame(st.session_state.tasks)
+st.dataframe(df, use_container_width=True, hide_index=True)
+
+if "last_update" in st.session_state:
+    st.caption(f"最後更新：{st.session_state.last_update}")
