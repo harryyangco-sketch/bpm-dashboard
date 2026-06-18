@@ -35,9 +35,10 @@ def fetch_notion_data(token, db_id):
         "Notion-Version": "2022-06-28",
         "Content-Type": "application/json"
     }
-    return response = requests.post(url, headers=headers, json={})
+    # 修正語法錯誤：直接 return 請求結果
+    return requests.post(url, headers=headers, json={})
 
-# 💡 精準解讀你截圖中的 Notion 欄位格式
+# 💡 精準解讀 Notion 欄位格式
 def parse_notion_to_dataframe(raw_data):
     results = raw_data.get("results", [])
     parsed_list = []
@@ -49,7 +50,7 @@ def parse_notion_to_dataframe(raw_data):
         title_obj = properties.get("任務名稱", {})
         title = title_obj["title"][0].get("plain_text", "") if title_obj.get("title") else ""
             
-        # 2. 負責人 (Multi-select 或 People，先嘗試抓取名字列表)
+        # 2. 負責人 (Multi-select 或 People)
         people_obj = properties.get("負責人", {})
         people = "-"
         if people_obj:
@@ -115,13 +116,13 @@ if st.sidebar.button("🔄 立即同步最新資料"):
                 # 📊 第一層：數據小卡
                 total_tasks = len(df)
                 completed_tasks = len(df[df["狀態"].isin(["已完成", "Done"])])
-                pending_decisions = len(df[df["須優先決議"].isin(["待決議", "是"])])
+                pending_decisions = len(df[df["須優先決議"].isin(["待決議", "是", "待決議 "])])
                 
                 # 計算整體平均進度
                 avg_progress = df["進度"].mean() if "進度" in df else 0.0
                 
                 col1, col2, col3 = st.columns(3)
-                col1.metric("總任務筆数", f"{total_tasks} 筆")
+                col1.metric("總任務筆數", f"{total_tasks} 筆")
                 col2.metric("專案整體總進度", f"{int(avg_progress * 100)}%")
                 col3.metric("⚠️ 待決議事項", f"{pending_decisions} 筆", delta="- 需注意" if pending_decisions > 0 else "正常")
                 
@@ -137,7 +138,7 @@ if st.sidebar.button("🔄 立即同步最新資料"):
                     
                 with right_col:
                     st.subheader("⚠️ 須優先決議清單")
-                    urgent_df = df[df["須優先決議"].isin(["待決議", "是"])][["任務名稱", "負責人", "須優先決議"]]
+                    urgent_df = df[df["須優先決議"].isin(["待決議", "是", "待決議 "])][["任務名稱", "負責人", "須優先決議"]]
                     if not urgent_df.empty:
                         st.dataframe(urgent_df, use_container_width=True, hide_index=True)
                     else:
@@ -148,7 +149,6 @@ if st.sidebar.button("🔄 立即同步最新資料"):
                 # 📋 第三層：詳細任務資料表（帶進度條）
                 st.subheader("📋 專案工作總覽明細表")
                 
-                # 使用 Streamlit 內建強大的 column_config 功能，直接把小數點變成網頁進度條！
                 st.data_editor(
                     df,
                     column_config={
@@ -161,7 +161,7 @@ if st.sidebar.button("🔄 立即同步最新資料"):
                         ),
                     },
                     use_container_width=True,
-                    disabled=True, # 唯讀模式
+                    disabled=True,
                     hide_index=True
                 )
                 
