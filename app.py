@@ -70,10 +70,13 @@ def fetch_all_tasks():
 
 # ── 工具函式 ──────────────────────────────────────────
 def days_late(end_str, status):
-    if not end_str or status == "已完成":
+    try:
+        if not end_str or status == "已完成":
+            return 0
+        delta = (date.today() - date.fromisoformat(str(end_str)[:10])).days
+        return delta if delta > 0 else 0
+    except Exception:
         return 0
-    delta = (date.today() - date.fromisoformat(end_str)).days
-    return delta if delta > 0 else 0
 
 def prio_color(p):
     return {"高": "🔴", "中": "🟡", "低": "🟢"}.get(p, "⚪")
