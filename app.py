@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components
+
 import requests
 import pandas as pd
 import json
@@ -9,42 +9,15 @@ st.set_page_config(page_title="BPM Team Dashboard", layout="wide", page_icon="�
 
 # ── 設定 ──────────────────────────────────────────────
 NOTION_TOKEN = st.secrets["NOTION_TOKEN"]
-@st.cache_data(ttl=300)
-def fetch_db_list():
-    headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
-        "Notion-Version": "2022-06-28",
-        "Content-Type": "application/json",
-    }
-    dbs = {}
-    has_more = True
-    cursor = None
-    while has_more:
-        body = {
-            "filter": {"value": "database", "property": "object"},
-            "page_size": 100
-        }
-        if cursor:
-            body["start_cursor"] = cursor
-        res = requests.post(
-            "https://api.notion.com/v1/search",
-            headers=headers,
-            json=body
-        )
-        res.raise_for_status()
-        data = res.json()
-        for db in data.get("results", []):
-            title = "".join(t["plain_text"] for t in db.get("title", []))
-            if title:
-                dbs[title] = db["id"].replace("-", "")
-        has_more = data.get("has_more", False)
-        cursor = data.get("next_cursor")
-    return dbs
-
-DBS = fetch_db_list()
+DBS = {
+    "ALPT ALPSG BPM 導入專案": "38146c131ee380938377fc08df63428b",
+    "ALPM BPM 優化專案":       "38146c131ee38099ae66cdae04e36c92",
+    "BPM 多語系專案":           "38146c131ee3809ebe63db8f72fb615d",
+    "Ad-Hoc Project":          "38246c131ee3803299c4f30c7d3960f3",
+}
 
 # ── 資料拉取 ──────────────────────────────────────────
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def fetch_all_tasks():
     headers = {
         "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -115,6 +88,7 @@ if not tasks:
 # ── 把資料注入 HTML ───────────────────────────────────
 today_str = date.today().isoformat()
 tasks_json = json.dumps(tasks, ensure_ascii=False)
+snapshot = date.today().isoformat()
 
 HTML = f"""<!doctype html>
 <html lang="zh-Hant">
@@ -282,8 +256,8 @@ HTML = f"""<!doctype html>
     </div>
   </div>
   <div class="sec-h"><h2>Overview</h2></div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:18px" id="kpis"></div>
   <div class="grid charts">
-    <div id="kpis" style="display:contents"></div>
     <div class="card card-donut">
       <div class="card-h"><h3>完成率</h3></div>
       <div class="rate-body">
@@ -330,7 +304,7 @@ HTML = f"""<!doctype html>
 </div>
 
 <script>
-const SNAPSHOT_DATE = "{today_str}";
+const SNAPSHOT_DATE = "{snapshot}";
 const TASKS = {tasks_json};
 
 const PHASE = {{"需求確認":1,"Kick-off 會議":2,"Kick-off Meeting":2,"報價單簽回":3,"採購和付款方式確認":3,"開發":4,"部署":5,"UAT":6,"KUT":7,"技轉和驗收":8}};
@@ -508,4 +482,4 @@ document.getElementById("kanban").innerHTML = ["未開始","進行中","已完�
 </body>
 </html>"""
 
-components.html(HTML, height=3200, scrolling=True)
+st.html(HTML)
