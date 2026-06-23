@@ -48,10 +48,11 @@
   .sec-h h2{font-size:16px;margin:0;letter-spacing:.2px}
   .sec-h span{font-size:12.5px;color:var(--ink3)}
   .grid{display:grid;gap:18px}
+  .kpis{grid-template-columns:repeat(4,1fr)}
   .charts{grid-template-columns:repeat(4,1fr);align-items:stretch}
   .two{grid-template-columns:1fr 1fr}
   @media(max-width:980px){.kpis{grid-template-columns:repeat(2,1fr)}.charts{grid-template-columns:1fr}.two{grid-template-columns:1fr}.charts .card[style*="span"]{grid-column:span 1}}
-  @media(max-width:560px){.charts{grid-template-columns:1fr}}
+  @media(max-width:560px){.kpis{grid-template-columns:1fr}}
   .card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:20px 22px}
   .card-donut{display:flex;flex-direction:column}
   .card-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
@@ -145,4 +146,323 @@
   .kc .kt-row .kt{min-width:0}
   .kc .kt-row .tg{flex:none}
   .kc .kpct{font-size:11px;font-weight:700;color:var(--ink2)}
-  .col-body .empty{padding:20px 6px
+  .col-body .empty{padding:20px 6px}
+  .foot{margin-top:30px;text-align:center;color:var(--ink3);font-size:12px;line-height:1.7}
+  .owner-tabs-wrap{display:flex;align-items:flex-end;gap:0;padding:0;position:relative;z-index:1;margin-top:0}
+  .owner-tab{position:relative;min-width:110px;padding:9px 20px 10px;font-size:13.5px;font-weight:600;color:var(--ink3);cursor:pointer;background:var(--grey-soft);border:1px solid var(--line);border-bottom:none;border-radius:10px 10px 0 0;margin-right:-1px;transition:background .15s,color .15s;white-space:nowrap;user-select:none;display:inline-flex;align-items:center;gap:8px;z-index:1}
+  .owner-tab:hover{background:#eeedf7;color:var(--ink2)}
+  .owner-tab.active{background:var(--card);color:var(--ink);border-color:var(--line);z-index:3;margin-bottom:-1px;padding-bottom:11px}
+  .owner-tab .tcnt{display:inline-block;font-size:11px;font-weight:700;background:var(--grey-soft);color:var(--ink3);border-radius:999px;padding:1px 8px;}
+  .owner-tab.active .tcnt{background:var(--purple-soft);color:var(--purple)}
+  .owner-panel{background:var(--card);border-radius:0 var(--r) var(--r) var(--r);border:1px solid var(--line);box-shadow:var(--shadow);padding:4px 22px 20px;position:relative;z-index:2}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div><h1>BPM Team Project Management Dashboard</h1></div>
+    </div>
+    <div class="topmeta">
+      <span class="chip"><span class="dot"></span>資料快照 <b id="snap"></b></span>
+      <span class="chip">總專案數 <b id="projcount"></b></span>
+    </div>
+  </div>
+ 
+  <div class="sec-h"><h2>Overview</h2></div>
+  <div class="grid charts">
+    <div id="kpis" style="display:contents"></div>
+    <div class="card card-donut" style="grid-column:span 2">
+      <div class="card-h"><h3>狀態分佈</h3></div>
+      <div class="donut-wrap">
+        <div class="donut-area">
+          <div class="donut"><svg id="donut" viewBox="0 0 160 160"></svg>
+            <div class="center"><b id="donutcenter"></b><small>總任務</small></div>
+          </div>
+        </div>
+        <div class="legend" id="donutlegend"></div>
+      </div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>各專案任務數</h3></div>
+      <div class="bars" id="projbars"></div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>🔴 須優先決議</h3></div>
+      <div id="decision"></div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <div class="card-h"><h3>⚠️ 進度異常</h3><span class="hint">已逾結束日且未完成</span></div>
+      <div id="overdue"></div>
+    </div>
+  </div>
+ 
+  <div class="sec-h"><h2>專案進度總覽</h2><span>點擊專案可展開任務明細</span></div>
+  <div class="card"><div id="projects"></div></div>
+ 
+  <div class="sec-h"><h2>各負責人任務</h2></div>
+  <div class="owner-tabs-wrap" id="ownerTabs"></div>
+  <div class="owner-panel" id="ownerPanel"></div>
+ 
+  <div class="sec-h"><h2>工作看板</h2></div>
+  <div class="kanban" id="kanban"></div>
+ 
+  <div class="foot">
+    指標依定義即時計算：完成率＝已完成÷總任務；專案進度＝該專案各任務進度平均（含未開始）；落後＝結束日早於今日且未完成。<br>
+    資料來源 Notion · BPM Team teamspace（動態納入新專案）。本頁為快照，更新請對 Claude 說「更新 dashboard」。
+  </div>
+</div>
+ 
+<script>
+/* SNAPSHOT — 由 Claude 自 Notion BPM Team 撈取（共 28 筆任務 / 6 專案）
+   每筆 progress = Notion「起始值」÷「結束值」× 100（formula 欄位）。
+   更新方式：對 Claude 說「更新 dashboard」。 */
+const SNAPSHOT_DATE = "2026-06-23";
+const TASKS = [
+  // ── BPM 多語系專案（6 件）──
+  {proj:"BPM 多語系專案", task:"Kick-off Meeting", owner:"Larry",        prio:"低", status:"已完成", start:"2025-12-10", end:"2025-12-10", progress:100, actual_end:"2025-12-10", decide:"否",     note:""},
+  {proj:"BPM 多語系專案", task:"需求確認",         owner:"Harry",        prio:"低", status:"已完成", start:"2025-12-26", end:"2025-12-31", progress:100, actual_end:"2025-12-31", decide:"否",     note:""},
+  {proj:"BPM 多語系專案", task:"開發",             owner:"慧智",         prio:"高", status:"已完成", start:"2026-01-02", end:"2026-02-06", progress:100, actual_end:"2026-02-06", decide:"否",     note:""},
+  {proj:"BPM 多語系專案", task:"UAT",              owner:"Harry",        prio:"高", status:"已完成", start:"2026-04-10", end:"2026-05-29", progress:100, actual_end:"2026-05-29", decide:"否",     note:""},
+  {proj:"BPM 多語系專案", task:"部署",             owner:"慧智",         prio:"中", status:"已完成", start:"2026-06-06", end:"2026-06-06", progress:100, actual_end:"2026-06-06", decide:"否",     note:""},
+  {proj:"BPM 多語系專案", task:"技轉和驗收",       owner:"Larry, Harry", prio:"高", status:"進行中", start:"2026-06-17", end:"2026-06-24", progress:50,  actual_end:null,          decide:"待決議", note:"技轉交付文件"},
+ 
+  // ── ALPT ALPSG BPM 導入專案（6 件）──
+  {proj:"ALPT ALPSG BPM 導入專案", task:"Kick-off Meeting", owner:"Larry",        prio:"中", status:"未開始", start:null, end:null, progress:60, actual_end:null, decide:"待決議", note:"Kick off 時間和與會人員"},
+  {proj:"ALPT ALPSG BPM 導入專案", task:"需求確認",         owner:"Harry, Cindy", prio:"低", status:"未開始", start:null, end:null, progress:60, actual_end:null, decide:"否",     note:""},
+  {proj:"ALPT ALPSG BPM 導入專案", task:"開發",             owner:"甫曉",         prio:"低", status:"未開始", start:null, end:null, progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPT ALPSG BPM 導入專案", task:"部署",             owner:"甫曉",         prio:"低", status:"未開始", start:null, end:null, progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPT ALPSG BPM 導入專案", task:"UAT",              owner:"Harry",        prio:"低", status:"未開始", start:null, end:null, progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPT ALPSG BPM 導入專案", task:"KUT",              owner:"Cindy",        prio:"低", status:"未開始", start:null, end:null, progress:0,  actual_end:null, decide:"否",     note:""},
+ 
+  // ── ALPM BPM 優化專案（5 件）──
+  {proj:"ALPM BPM 優化專案", task:"採購和付款方式確認", owner:"Larry",        prio:"高", status:"進行中", start:"2026-06-15", end:"2026-06-24", progress:65, actual_end:null, decide:"已決議", note:"採購方式和稅務歸屬"},
+  {proj:"ALPM BPM 優化專案", task:"需求確認",           owner:"Harry, Cindy", prio:"高", status:"未開始", start:"2026-06-24", end:"2026-06-30", progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPM BPM 優化專案", task:"開發",               owner:"甫曉",         prio:"高", status:"未開始", start:"2026-07-01", end:"2026-07-17", progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPM BPM 優化專案", task:"UAT",                owner:"Harry, Cindy", prio:"高", status:"未開始", start:"2026-07-08", end:"2026-07-21", progress:0,  actual_end:null, decide:"否",     note:""},
+  {proj:"ALPM BPM 優化專案", task:"部署",               owner:"甫曉",         prio:"高", status:"未開始", start:"2026-07-24", end:"2026-07-24", progress:0,  actual_end:null, decide:"否",     note:""},
+ 
+  // ── Ad-Hoc Project（6 件）──
+  {proj:"Ad-Hoc Project", task:"採購單流程調整",    owner:"Harry",        prio:"高", status:"已完成", start:"2026-05-28", end:"2026-06-04", progress:100, actual_end:"2026-06-04", decide:"否",     note:""},
+  {proj:"Ad-Hoc Project", task:"[ALPM] PO報表開發", owner:"Cindy",        prio:"中", status:"已完成", start:"2026-04-27", end:"2026-05-19", progress:100, actual_end:"2026-05-19", decide:"否",     note:""},
+  {proj:"Ad-Hoc Project", task:"AD AI Spark",       owner:"Harry",        prio:"高", status:"已完成", start:"2026-06-08", end:"2026-06-22", progress:100, actual_end:"2026-06-22", decide:"否",     note:""},
+  {proj:"Ad-Hoc Project", task:"[ALPM] PV報表開發", owner:"Cindy",        prio:"中", status:"進行中", start:"2026-04-24", end:"2026-08-31", progress:66,  actual_end:null,          decide:"否",     note:""},
+  {proj:"Ad-Hoc Project", task:"採購單追加減",      owner:"Larry",        prio:"中", status:"未開始", start:"2026-06-03", end:"2026-12-31", progress:0,   actual_end:null,          decide:"待決議", note:"是否與碩益約會議"},
+  {proj:"Ad-Hoc Project", task:"Team Dashboard",    owner:"Larry, Cindy", prio:"高", status:"進行中", start:"2026-06-15", end:"2026-06-30", progress:40,  actual_end:null,          decide:"待決議", note:"確認資訊和部屬方式"},
+ 
+  // ── Test New Project（3 件）──
+  {proj:"Test New Project", task:"Add a new project", owner:"Cindy",        prio:"中", status:"已完成", start:"2026-06-15", end:"2026-06-18", progress:100, actual_end:null, decide:"否", note:""},
+  {proj:"Test New Project", task:"Check if added",    owner:"Harry",        prio:"中", status:"未開始", start:"2026-06-18", end:"2026-06-25", progress:0,   actual_end:null, decide:"否", note:""},
+  {proj:"Test New Project", task:"Fix if not added",  owner:"Harry, Cindy", prio:"高", status:"進行中", start:"2026-06-15", end:"2026-06-26", progress:10,  actual_end:null, decide:"否", note:""},
+ 
+  // ── Test New Project (0622)（3 件）──
+  {proj:"Test New Project (0622)", task:"Add a new project", owner:"Cindy",        prio:"中", status:"已完成", start:"2026-06-15", end:"2026-06-18", progress:100, actual_end:null, decide:"否", note:""},
+  {proj:"Test New Project (0622)", task:"Check if added",    owner:"Harry",        prio:"中", status:"未開始", start:"2026-06-18", end:"2026-06-25", progress:0,   actual_end:null, decide:"否", note:""},
+  {proj:"Test New Project (0622)", task:"Fix if not added",  owner:"Harry, Cindy", prio:"高", status:"進行中", start:"2026-06-15", end:"2026-06-26", progress:10,  actual_end:null, decide:"否", note:""},
+];
+ 
+const PHASE = {"需求確認":1,"Kick-off 會議":2,"Kick-off Meeting":2,"報價單簽回":3,"採購和付款方式確認":3,"開發":4,"部署":5,"UAT":6,"KUT":7,"技轉和驗收":8};
+const PRIO_RANK = {"高":0,"中":1,"低":2};
+function taskOrder(a,b){
+  const pr=(PRIO_RANK[a.prio]??9)-(PRIO_RANK[b.prio]??9);
+  if(pr!==0) return pr;
+  if(a.end && b.end) return a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
+  if(a.end && !b.end) return -1;
+  if(!a.end && b.end) return 1;
+  return 0;
+}
+ 
+const STC = {"未開始":"var(--grey)","進行中":"var(--orange)","已完成":"var(--blue)"};
+const today = new Date(SNAPSHOT_DATE+"T00:00:00+08:00");
+const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const prioCls = p => p==="高"?"hi":p==="中"?"mid":"lo";
+function daysLate(end){ const d=new Date(end+"T00:00:00+08:00"); return Math.round((today-d)/86400000); }
+function isOverdue(t){ return t.end && !t.actual_end && t.status!=="已完成" && daysLate(t.end)>0; }
+function whoCell(owner){
+  if(!owner) return '<span style="color:var(--ink3)">未指派</span>';
+  return esc(owner);
+}
+function stPill(s){ return '<span class="st"><span class="sdot" style="background:'+STC[s]+'"></span>'+s+'</span>'; }
+ 
+const total = TASKS.length;
+const cnt = s => TASKS.filter(t=>t.status===s).length;
+const nInProg = cnt("進行中"), nDone = cnt("已完成"), nTodo = cnt("未開始");
+const doneRate = Math.round(nDone/total*100);
+const decisionList = TASKS.filter(t=>t.decide==="待決議");
+const overdueList = TASKS.filter(t=>isOverdue(t)).sort((a,b)=>daysLate(b.end)-daysLate(a.end));
+ 
+const projOrder=[]; const projMap={};
+TASKS.forEach(t=>{ if(!projMap[t.proj]){projMap[t.proj]=[];projOrder.push(t.proj);} projMap[t.proj].push(t); });
+const projects = projOrder.map(name=>{
+  const ts=projMap[name];
+  const avg=Math.round(ts.reduce((s,t)=>s+t.progress,0)/ts.length);
+  return {name, tasks:ts, avg, n:ts.length};
+});
+ 
+document.getElementById("snap").textContent = SNAPSHOT_DATE;
+document.getElementById("projcount").textContent = projects.length + " 個";
+document.getElementById("donutcenter").textContent = total;
+ 
+const kpiDefs = [
+  {n:total, lbl:"總任務件數", sub:"", cls:"", ic:"i-navy",
+   svg:'<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 6h16M4 12h16M4 18h10"/>'},
+  {n:nDone, lbl:"已完成件數", sub:"", cls:"", ic:"i-mint",
+   svg:'<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'},
+  {n:decisionList.length, lbl:"須優先決議件數", sub:"", cls:decisionList.length?"warn":"", ic:"i-coral",
+   svg:'<path d="M12 3l9 16H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 10v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
+  {n:overdueList.length, lbl:"落後任務件數", sub:"", cls:overdueList.length?"alert":"", ic:"i-red",
+   svg:'<circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v4l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
+];
+document.getElementById("kpis").innerHTML = kpiDefs.map(k=>`
+  <div class="kpi ${k.cls}">
+    <div class="ico ${k.ic}"><svg viewBox="0 0 24 24">${k.svg}</svg></div>
+    <div class="num">${k.n}</div>
+    <div class="lbl">${k.lbl}</div>
+    ${k.sub?`<div class="sub">${k.sub}</div>`:``}
+  </div>`).join("");
+ 
+(function(){
+  const segs=[{k:"已完成",v:nDone},{k:"進行中",v:nInProg},{k:"未開始",v:nTodo}];
+  const r=64, cx=80, cy=80, C=2*Math.PI*r; let off=0;
+  let svg='';
+  segs.forEach(s=>{ if(s.v<=0) return; const len=s.v/total*C;
+    svg+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${STC[s.k]}" stroke-width="20"
+            stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}"
+            transform="rotate(-90 ${cx} ${cy})" stroke-linecap="butt"/>`;
+    off+=len; });
+  document.getElementById("donut").innerHTML=svg;
+  document.getElementById("donutlegend").innerHTML=segs.map(s=>`
+    <div class="row"><span class="sw" style="background:${STC[s.k]}"></span>${s.k}<span class="v">${s.v}</span></div>`).join("");
+})();
+ 
+const maxN=Math.max(...projects.map(p=>p.n));
+(function(){
+  const legendHTML=`<div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
+    ${[["未開始","#b9bccd"],["進行中","#f97316"],["已完成","#3B9BE8"]].map(([k,c])=>
+      `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ink2)">
+        <span style="width:10px;height:10px;border-radius:3px;background:${c};flex:none"></span>${k}</span>`).join("")}
+  </div>`;
+  const barsHTML=projects.map(p=>{
+    const nTd=p.tasks.filter(t=>t.status==="未開始").length;
+    const nIp=p.tasks.filter(t=>t.status==="進行中").length;
+    const nDn=p.tasks.filter(t=>t.status==="已完成").length;
+    const barW=maxN?p.n/maxN*100:0;
+    const pTd=p.n?nTd/p.n*100:0, pIp=p.n?nIp/p.n*100:0, pDn=p.n?nDn/p.n*100:0;
+    const segs=[];
+    let cum=0;
+    if(nTd){segs.push(`#b9bccd ${cum}% ${cum+pTd}%`);cum+=pTd;}
+    if(nIp){segs.push(`#f97316 ${cum}% ${cum+pIp}%`);cum+=pIp;}
+    if(nDn){segs.push(`#3B9BE8 ${cum}% ${cum+pDn}%`);cum+=pDn;}
+    const grad=segs.length?`linear-gradient(90deg,${segs.join(",")})`:'';;
+    const tip=`未開始 ${nTd} ／ 進行中 ${nIp} ／ 已完成 ${nDn}`;
+    return `<div class="bar-row">
+      <div class="top"><span class="name">${esc(p.name)}</span><span class="val">${p.n} 筆</span></div>
+      <div class="track bare">
+        <div class="bar-tip-wrap" style="width:${barW}%;height:13px;display:inline-block;vertical-align:top">
+          <span style="display:block;width:100%;height:100%;border-radius:999px;background:${grad};cursor:pointer"></span>
+          <div class="bar-tip">${tip}</div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  document.getElementById("projbars").insertAdjacentHTML("beforeend", legendHTML+barsHTML);
+})();
+ 
+document.getElementById("decision").innerHTML = decisionList.length ? `
+  <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>待決議事項</th></tr></thead><tbody>
+  ${decisionList.map(t=>`<tr>
+    <td><span class="tg proj">${esc(t.proj)}</span></td>
+    <td>${esc(t.task)}</td><td>${whoCell(t.owner)}</td>
+    <td>${esc(t.note)||'<span style="color:var(--ink3)">（未填說明）</span>'}</td></tr>`).join("")}
+  </tbody></table>` : `<div class="empty"><div class="big">目前沒有待決議事項</div></div>`;
+ 
+document.getElementById("overdue").innerHTML = overdueList.length ? `
+  <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>預計完成</th><th>落後</th></tr></thead><tbody>
+  ${overdueList.map(t=>`<tr>
+    <td><span class="tg proj">${esc(t.proj)}</span></td>
+    <td>${esc(t.task)}</td><td>${whoCell(t.owner)}</td>
+    <td>${esc(t.end)}</td><td class="late">${daysLate(t.end)} 天</td></tr>`).join("")}
+  </tbody></table>` : `<div class="empty"><div class="big">目前沒有落後任務</div></div>`;
+ 
+document.getElementById("projects").innerHTML = projects.map((p,i)=>`
+  <div class="proj" id="proj${i}">
+    <div class="proj-head" onclick="document.getElementById('proj${i}').classList.toggle('open')">
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><div class="pname">${esc(p.name)}</div>
+        <div class="pmeta">${p.n} 個任務 · 已完成 ${p.tasks.filter(t=>t.status==="已完成").length} · 進行中 ${p.tasks.filter(t=>t.status==="進行中").length}</div></div>
+      <div class="proj-prog">
+        <div class="ptrack"><div class="pfill" style="width:${p.avg}%"></div></div>
+        <div class="ppct">${p.avg}%</div>
+      </div>
+    </div>
+    <div class="proj-body">
+      <table class="fixed-table"><colgroup><col class="col-w1"><col class="col-w2"><col class="col-w3"><col class="col-w4"><col class="col-w5"><col class="col-w6"></colgroup>
+      <thead><tr><th>任務</th><th>負責人</th><th>狀態</th><th>進度</th><th>結束日</th><th>優先</th></tr></thead><tbody>
+      ${p.tasks.slice().sort(taskOrder).map(t=>`<tr>
+        <td>${esc(t.task)}${t.decide==="待決議"?' <span class="tg hi">待決議</span>':t.decide==="已決議"?' <span class="tg lo">已決議</span>':''}</td>
+        <td>${whoCell(t.owner)}</td><td>${stPill(t.status)}</td>
+        <td><span class="mini"><i style="width:${t.progress}%"></i></span> <span style="font-size:12px;font-weight:700">${t.progress}%</span></td>
+        <td>${t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}${isOverdue(t)?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}</td>
+        <td><span class="tg ${prioCls(t.prio)}">${t.prio}</span></td></tr>`).join("")}
+      </tbody></table>
+    </div>
+  </div>`).join("");
+ 
+document.getElementById("kanban").innerHTML = ["未開始","進行中","已完成"].map(st=>{
+  const items=TASKS.filter(t=>t.status===st);
+  const cards = items.length ? items.map(t=> st==="進行中"
+    ? `<div class="kc" style="border-left-color:${STC[st]}">
+      <div class="kt">${esc(t.task)}</div>
+      <div class="kp">${esc(t.proj)}</div>
+      <div class="kfoot">
+        <span class="tg ${prioCls(t.prio)}">${t.prio}</span>
+        <span class="mini"><i style="width:${t.progress}%"></i></span>
+        <span class="kpct">${t.progress}%</span>
+      </div>
+    </div>`
+    : `<div class="kc" style="border-left-color:${STC[st]}">
+      <div class="kt-row"><span class="kt">${esc(t.task)}</span><span class="tg ${prioCls(t.prio)}">${t.prio}</span></div>
+      <div class="kp">${esc(t.proj)}</div>
+    </div>`).join("")
+   : '<div class="empty"><div class="sm">此欄目前沒有任務</div></div>';
+  return `<div class="col">
+    <div class="col-h"><span class="sdot" style="background:${STC[st]}"></span><h3>${st}</h3><span class="cnt">${items.length}</span></div>
+    <div class="col-body">${cards}</div>
+  </div>`;
+}).join("");
+ 
+(function(){
+  const OWNERS=["Larry","Harry","Cindy"];
+  function ownerTasks(name){
+    return TASKS.filter(t=>t.owner&&t.owner.split(",").map(s=>s.trim()).includes(name))
+      .slice().sort(taskOrder);
+  }
+  function ownerTable(tasks){
+    if(!tasks.length) return '<div class="empty"><div class="sm">此人目前沒有任務</div></div>';
+    return `<table class="fixed-table"><colgroup><col class="col-w1"><col class="col-w2"><col class="col-w3"><col class="col-w4"><col class="col-w5"><col class="col-w6"></colgroup>
+    <thead><tr><th>專案</th><th>任務</th><th>狀態</th><th>進度</th><th>結束日</th><th>優先</th></tr></thead><tbody>
+    ${tasks.map(t=>`<tr>
+      <td><span class="tg proj">${esc(t.proj)}</span></td>
+      <td>${esc(t.task)}${t.decide==="待決議"?' <span class="tg hi">待決議</span>':''}</td>
+      <td>${stPill(t.status)}</td>
+      <td><span class="mini"><i style="width:${t.progress}%"></i></span> <span style="font-size:12px;font-weight:700">${t.progress}%</span></td>
+      <td>${t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}${isOverdue(t)?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}</td>
+      <td><span class="tg ${prioCls(t.prio)}">${t.prio}</span></td>
+    </tr>`).join("")}</tbody></table>`;
+  }
+  const tabsEl=document.getElementById("ownerTabs");
+  const panelEl=document.getElementById("ownerPanel");
+  const allTasks=OWNERS.map(ownerTasks);
+  tabsEl.innerHTML=OWNERS.map((n,i)=>`<div class="owner-tab${i===0?" active":""}" data-i="${i}">${n}<span class="tcnt">${allTasks[i].length}</span></div>`).join("");
+  panelEl.innerHTML=ownerTable(allTasks[0]);
+  tabsEl.addEventListener("click",function(e){
+    const tab=e.target.closest(".owner-tab");
+    if(!tab) return;
+    const i=+tab.dataset.i;
+    tabsEl.querySelectorAll(".owner-tab").forEach((t,j)=>t.classList.toggle("active",j===i));
+    panelEl.innerHTML=ownerTable(allTasks[i]);
+  });
+})();
+</script>
+</body>
+</html>
