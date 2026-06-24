@@ -229,7 +229,7 @@ HTML = f"""<!doctype html>
   .col-h .sdot{{width:10px;height:10px;border-radius:50%}}
   .col-h h3{{font-size:14px;margin:0}}
   .col-h .cnt{{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink2);background:var(--grey-soft);padding:2px 10px;border-radius:999px}}
-  .col-body{{display:flex;flex-direction:column;gap:11px;padding:2px}}
+  .col-body{{display:flex;flex-direction:column;gap:11px;max-height:430px;overflow:auto;padding:2px}}
   .kc{{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-sm);padding:13px;border-left:3px solid var(--grey)}}
   .kc .kt{{font-weight:700;font-size:13.5px}} .kc .kp{{font-size:11px;color:var(--ink3);margin-top:3px}}
   .kc .kfoot{{display:flex;align-items:center;gap:9px;margin-top:11px}}
@@ -465,11 +465,4 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-components.html(HTML + """
-<script>
-  window.addEventListener('load', function() {
-    const h = document.body.scrollHeight;
-    window.parent.postMessage({type: 'streamlit:setFrameHeight', height: h}, '*');
-  });
-</script>
-""", height=1000, scrolling=False)
+components.html(HTML, height=4500, scrolling=True)
