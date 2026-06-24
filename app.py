@@ -465,4 +465,16 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-components.html(HTML, height=4000, scrolling=True)
+AUTO_HEIGHT_JS = """
+<script>
+  function sendHeight() {
+    const h = document.documentElement.scrollHeight;
+    window.parent.postMessage({isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: h}, '*');
+  }
+  // 初始發送
+  window.addEventListener('load', sendHeight);
+  // 監聽任何 DOM 變化（展開/收合）
+  new MutationObserver(sendHeight).observe(document.body, {subtree: true, childList: true, attributes: true});
+</script>
+"""
+components.html(HTML + AUTO_HEIGHT_JS, height=4000, scrolling=False)
