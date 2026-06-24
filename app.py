@@ -229,7 +229,7 @@ HTML = f"""<!doctype html>
   .col-h .sdot{{width:10px;height:10px;border-radius:50%}}
   .col-h h3{{font-size:14px;margin:0}}
   .col-h .cnt{{margin-left:auto;font-size:12px;font-weight:700;color:var(--ink2);background:var(--grey-soft);padding:2px 10px;border-radius:999px}}
-  .col-body{{display:flex;flex-direction:column;gap:11px;padding:2px}}
+  .col-body{{display:flex;flex-direction:column;gap:11px;max-height:600px;overflow-y:auto;padding:2px}}
   .kc{{background:var(--card2);border:1px solid var(--line);border-radius:var(--r-sm);padding:13px;border-left:3px solid var(--grey)}}
   .kc .kt{{font-weight:700;font-size:13.5px}} .kc .kp{{font-size:11px;color:var(--ink3);margin-top:3px}}
   .kc .kfoot{{display:flex;align-items:center;gap:9px;margin-top:11px}}
@@ -465,17 +465,4 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-AUTO_HEIGHT_JS = """
-<script>
-  let lastH = 0;
-  function sendHeight() {
-    const h = document.documentElement.scrollHeight;
-    if (h !== lastH) {
-      lastH = h;
-      window.parent.postMessage({isStreamlitMessage: true, type: 'streamlit:setFrameHeight', height: h + 50}, '*');
-    }
-  }
-  setInterval(sendHeight, 200);
-</script>
-"""
-components.html(HTML + AUTO_HEIGHT_JS, height=800, scrolling=False)
+components.html(HTML, height=4200, scrolling=True)
