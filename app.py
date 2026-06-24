@@ -465,4 +465,4 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-components.html(HTML, height=4000, scrolling=True)
+components.html(HTML, height=8000, scrolling=False)
