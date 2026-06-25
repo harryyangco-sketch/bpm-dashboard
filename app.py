@@ -465,7 +465,4 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-n_tasks = len(tasks)
-n_projs = len(set(t["proj"] for t in tasks))
-iframe_height = 1900 + n_projs * 58 + n_tasks * 22
-components.html(HTML, height=iframe_height, scrolling=True)
+components.html(HTML, height=4000, scrolling=True)
