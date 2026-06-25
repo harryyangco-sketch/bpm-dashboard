@@ -236,7 +236,7 @@ HTML = f"""<!doctype html>
   .kc .kfoot .mini{{width:auto;flex:1}}
   .kc .kt-row{{display:flex;align-items:center;justify-content:space-between;gap:10px}}
   .kc .kpct{{font-size:11px;font-weight:700;color:var(--ink2)}}
-  .foot{{margin-top:30px;text-align:center;color:var(--ink3);font-size:12px;line-height:1.7}}
+  .foot{{margin-top:30px;text-align:center;color:var(--ink3);font-size:12px;line-height:1.7;padding-bottom:20px}}
   .owner-tabs-wrap{{display:flex;align-items:flex-end;padding:0;position:relative;z-index:1}}
   .owner-tab{{min-width:110px;padding:9px 20px 10px;font-size:13.5px;font-weight:600;color:var(--ink3);
     cursor:pointer;background:var(--grey-soft);border:1px solid var(--line);border-bottom:none;
@@ -461,8 +461,22 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
     panelEl.innerHTML=ownerTable(allTasks[i]);
   }});
 }})();
+// ── 動態縮小 iframe 到實際內容高度 ──
+function syncHeight() {{
+  const h = document.querySelector(".wrap").getBoundingClientRect().bottom + 30;
+  window.parent.postMessage({{type:"streamlit:setFrameHeight", height:Math.ceil(h)}}, "*");
+}}
+window.addEventListener("load", syncHeight);
+// 展開/收折專案時重新計算
+document.addEventListener("click", function(e) {{
+  if (e.target.closest(".proj-head")) setTimeout(syncHeight, 300);
+}});
+// 以 ResizeObserver 補底
+if (window.ResizeObserver) {{
+  new ResizeObserver(syncHeight).observe(document.querySelector(".wrap"));
+}}
 </script>
 </body>
 </html>"""
 
-components.html(HTML, height=4000, scrolling=True)
+components.html(HTML, height=4000, scrolling=False)
