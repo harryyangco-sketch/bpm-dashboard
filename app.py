@@ -237,7 +237,6 @@ HTML = f"""<!doctype html>
   .kc .kt-row{{display:flex;align-items:center;justify-content:space-between;gap:10px}}
   .kc .kpct{{font-size:11px;font-weight:700;color:var(--ink2)}}
   .foot{{margin-top:30px;text-align:center;color:var(--ink3);font-size:12px;line-height:1.7}}
-  html,body{{height:auto!important;overflow:visible!important}}
   .owner-tabs-wrap{{display:flex;align-items:flex-end;padding:0;position:relative;z-index:1}}
   .owner-tab{{min-width:110px;padding:9px 20px 10px;font-size:13.5px;font-weight:600;color:var(--ink3);
     cursor:pointer;background:var(--grey-soft);border:1px solid var(--line);border-bottom:none;
@@ -462,19 +461,11 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
     panelEl.innerHTML=ownerTable(allTasks[i]);
   }});
 }})();
-// ── 動態調整 iframe 高度 ──
-function reportHeight() {{
-  const h = document.documentElement.scrollHeight;
-  window.parent.postMessage({{type:"streamlit:setFrameHeight", height:h}}, "*");
-}}
-// 頁面載入後回報
-window.addEventListener("load", reportHeight);
-// 監聽 .wrap 的尺寸變化（展開/收折時自動觸發）
-if (window.ResizeObserver) {{
-  new ResizeObserver(reportHeight).observe(document.querySelector(".wrap"));
-}}
 </script>
 </body>
 </html>"""
 
-components.html(HTML, height=800, scrolling=False)
+n_tasks = len(tasks)
+n_projs = len(set(t["proj"] for t in tasks))
+iframe_height = 1900 + n_projs * 58 + n_tasks * 22
+components.html(HTML, height=iframe_height, scrolling=True)
