@@ -253,7 +253,7 @@ HTML = f"""<!doctype html>
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2.5px solid var(--ink);border-radius:6px;padding:8px 14px;line-height:1;min-width:120px;min-height:52px">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2.5px solid var(--ink);border-radius:6px;padding:8px 14px;line-height:1;min-width:120px;min-height:52px;margin-left:40px">
         <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:var(--ink);font-family:'Inter',sans-serif">ALP</span>
         <span style="font-size:7px;font-weight:600;letter-spacing:1.5px;color:var(--ink);margin-top:3px">ALLY LOGISTIC PROPERTY</span>
       </div>
@@ -471,4 +471,4 @@ document.getElementById("kanban").innerHTML=["未開始","進行中","已完成"
 </body>
 </html>"""
 
-components.html(HTML, height=8000, scrolling=False)
+components.html(HTML, height=4000, scrolling=False)
