@@ -137,7 +137,7 @@ HTML = f"""<!doctype html>
   .wrap{{max-width:1280px;margin:0 auto}}
   .topbar{{display:flex;align-items:center;gap:18px;justify-content:space-between;
     background:linear-gradient(135deg,#ffffff,#f6f5fd);border-radius:var(--r);padding:18px 24px;
-    box-shadow:var(--shadow);margin-bottom:22px;flex-wrap:wrap}}
+    box-shadow:var(--shadow);margin-bottom:22px;flex-wrap:wrap;position:relative}}
   .brand h1{{font-size:19px;margin:0;letter-spacing:.2px}}
   .topmeta{{display:flex;align-items:center;gap:10px;flex-wrap:wrap}}
   .chip{{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--line);
@@ -253,12 +253,12 @@ HTML = f"""<!doctype html>
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;margin-right:8px;border:2.5px solid var(--ink);border-radius:6px;padding:4px 10px;line-height:1">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2.5px solid var(--ink);border-radius:6px;padding:8px 14px;line-height:1;min-width:120px;min-height:52px">
         <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:var(--ink);font-family:'Inter',sans-serif">ALP</span>
-        <span style="font-size:7px;font-weight:600;letter-spacing:1.5px;color:var(--ink);margin-top:2px">ALLY LOGISTIC PROPERTY</span>
+        <span style="font-size:7px;font-weight:600;letter-spacing:1.5px;color:var(--ink);margin-top:3px">ALLY LOGISTIC PROPERTY</span>
       </div>
-      <h1>BPM Team Project Management Dashboard</h1>
     </div>
+    <h1 style="font-size:19px;margin:0;letter-spacing:.2px;position:absolute;left:50%;transform:translateX(-50%)">BPM Team Project Management Dashboard</h1>
     <div class="topmeta">
       <span class="chip"><span class="dot"></span>資料快照 <b id="snap"></b></span>
       <span class="chip">總專案數 <b id="projcount"></b></span>
