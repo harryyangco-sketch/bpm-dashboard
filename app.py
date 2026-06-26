@@ -253,7 +253,7 @@ HTML = f"""<!doctype html>
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
-      <img src="https://raw.githubusercontent.com/harryyangco-sketch/bpm-dashboard/main/ALP%20logo.png" style="height:52px;width:auto;margin-left:40px">
+      <img src="https://raw.githubusercontent.com/harryyangco-sketch/bpm-dashboard/main/ALP%20logo.png" style="height:80px;width:auto;margin-left:40px">
     </div>
     <h1 style="font-size:19px;margin:0;letter-spacing:.2px;position:absolute;left:50%;transform:translateX(-50%)">BPM Team Project Management Dashboard</h1>
     <div class="topmeta">
