@@ -253,10 +253,7 @@ HTML = f"""<!doctype html>
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2.5px solid var(--ink);border-radius:6px;padding:8px 14px;line-height:1;min-width:120px;min-height:52px;margin-left:40px">
-        <span style="font-size:22px;font-weight:900;letter-spacing:2px;color:var(--ink);font-family:'Inter',sans-serif">ALP</span>
-        <span style="font-size:7px;font-weight:600;letter-spacing:1.5px;color:var(--ink);margin-top:3px">ALLY LOGISTIC PROPERTY</span>
-      </div>
+      <img src="https://raw.githubusercontent.com/harryyangco-sketch/bpm-dashboard/main/ALP%20logo.png" style="height:52px;width:auto;margin-left:40px">
     </div>
     <h1 style="font-size:19px;margin:0;letter-spacing:.2px;position:absolute;left:50%;transform:translateX(-50%)">BPM Team Project Management Dashboard</h1>
     <div class="topmeta">
