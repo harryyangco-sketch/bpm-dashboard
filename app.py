@@ -17,7 +17,7 @@ st.markdown(
     """
     <style>
       #MainMenu, header, footer {visibility: hidden;}
-      .block-container {padding: 0 !important; max-width: 100% !important;}
+      .block-container {padding: 0.6rem 1rem 0 !important; max-width: 100% !important;}
       iframe {display: block; width: 100%; border: none;}
     </style>
     """,
@@ -31,17 +31,14 @@ NOTION_HEADERS = {
     "Content-Type": "application/json",
 }
 
-# ── 按下畫面上的「更新資料」按鈕時，網址會帶上 ?refresh=時間戳 ──
-# 偵測到這個參數就清空快取，確保這次一定重新打 Notion API，不會被
-# 下面 5 分鐘的 cache 擋下、回傳舊資料。
-# （st.query_params 是 Streamlit 1.30+ 才有的 API，這裡加上舊版相容寫法）
-try:
-    has_refresh_param = "refresh" in st.query_params
-except AttributeError:
-    has_refresh_param = bool(st.experimental_get_query_params().get("refresh"))
-
-if has_refresh_param:
-    st.cache_data.clear()
+# ── 更新資料按鈕（原生 Streamlit 元件，放在 iframe 外面）──
+# 這是最保險的做法：直接呼叫 Streamlit 官方 API 清快取＋重新執行整份腳本，
+# 不依賴瀏覽器 / iframe 的導頁權限，一定會生效。
+col1, _ = st.columns([1, 9])
+with col1:
+    if st.button("🔄 更新資料"):
+        st.cache_data.clear()
+        st.rerun()
 
 
 @st.cache_data(ttl=300)
