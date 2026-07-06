@@ -34,7 +34,13 @@ NOTION_HEADERS = {
 # ── 按下畫面上的「更新資料」按鈕時，網址會帶上 ?refresh=時間戳 ──
 # 偵測到這個參數就清空快取，確保這次一定重新打 Notion API，不會被
 # 下面 5 分鐘的 cache 擋下、回傳舊資料。
-if "refresh" in st.query_params:
+# （st.query_params 是 Streamlit 1.30+ 才有的 API，這裡加上舊版相容寫法）
+try:
+    has_refresh_param = "refresh" in st.query_params
+except AttributeError:
+    has_refresh_param = bool(st.experimental_get_query_params().get("refresh"))
+
+if has_refresh_param:
     st.cache_data.clear()
 
 
