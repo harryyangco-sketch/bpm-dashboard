@@ -172,6 +172,8 @@ html = html.replace("__SNAPSHOT_DATE__", today_str)
 html = html.replace("__TASKS_JSON__", tasks_json)
 html = html.replace("__OWNERS_JSON__", owners_json)
 
-# scrolling=False + dashboard.html 內建的自動調整高度腳本，
+# scrolling=False + dashboard.html 內建的自動調整高度腳本（直接改 iframe 自身高度），
 # 讓 iframe 高度跟著內容撐開，只留瀏覽器外層一條滑軌（不會有內外兩條）。
-components.html(html, height=600, scrolling=False)
+# 這裡的 height=1200 只是「JS 校正前」的暫時高度，避免一開始閃一下被裁切；
+# 實際高度會在頁面載入後由 dashboard.html 裡的 postHeight() 自動調整成正確值。
+components.html(html, height=1200, scrolling=False)
