@@ -215,9 +215,11 @@
 
 <script>
 /* === 資料注入點（由 app.py 以 JSON 帶入，勿手動修改標記字串） === */
-const SNAPSHOT_DATE = "__SNAPSHOT_DATE__";
+const SNAPSHOT_DATETIME = "__SNAPSHOT_DATETIME__"; // 顯示用，格式 YYYY-MM-DD HH:mm:ss
+const SNAPSHOT_DATE = SNAPSHOT_DATETIME.slice(0,10); // 內部日期運算（落後天數等）只取日期部分
 const TASKS = __TASKS_JSON__;
-const OWNERS = __OWNERS_JSON__;
+// 分頁固定只顯示這三位，不受 TASKS 或注入資料影響（即使 owner 欄位出現其他人名也不會多出分頁）
+const OWNERS = ["Larry", "Harry", "Cindy"];
 
 const PHASE = {"需求確認":1,"Kick-off 會議":2,"Kick-off Meeting":2,"報價單簽回":3,"採購和付款方式確認":3,"開發":4,"部署":5,"UAT":6,"KUT":7,"技轉和驗收":8};
 const PRIO_RANK = {"高":0,"中":1,"低":2};
@@ -256,7 +258,7 @@ const projects = projOrder.map(name=>{
   return {name, tasks:ts, avg, n:ts.length};
 }).sort((a,b)=>b.avg-a.avg);
 
-document.getElementById("snap").textContent = SNAPSHOT_DATE;
+document.getElementById("snap").textContent = SNAPSHOT_DATETIME;
 document.getElementById("projcount").textContent = projects.length + " 個";
 document.getElementById("donutcenter").textContent = total;
 
