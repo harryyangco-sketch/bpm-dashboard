@@ -427,7 +427,15 @@ function postHeight(){
     document.documentElement.scrollHeight,
     document.body.scrollHeight,
     document.documentElement.offsetHeight
-  );
+  ) + 20; // 多留一點緩衝，避免邊界剛好被裁到
+  // 方法一（主要）：這個 iframe 是用 srcdoc 塞進 Streamlit 頁面的，跟外層同源，
+  // 可以直接改自己所在 iframe 元素的高度，不依賴 Streamlit 是否認得下面那個訊息格式。
+  try{
+    if(window.frameElement){
+      window.frameElement.style.height = h + "px";
+    }
+  }catch(e){}
+  // 方法二（保險）：同時也送 Streamlit 官方協定的訊息，兩種方式擇一生效即可。
   try{
     window.parent.postMessage({
       isStreamlitMessage:true,
@@ -436,7 +444,7 @@ function postHeight(){
     }, "*");
   }catch(e){}
 }
-window.addEventListener("load", function(){ postHeight(); setTimeout(postHeight,200); setTimeout(postHeight,600); });
+window.addEventListener("load", function(){ postHeight(); setTimeout(postHeight,200); setTimeout(postHeight,600); setTimeout(postHeight,1200); });
 window.addEventListener("resize", postHeight);
 document.addEventListener("click", function(){ setTimeout(postHeight,300); }); // 展開專案 / 切換分頁後重新量測
 try{ new ResizeObserver(function(){ postHeight(); }).observe(document.body); }catch(e){}
