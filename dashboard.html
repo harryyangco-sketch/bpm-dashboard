@@ -168,7 +168,7 @@
       <span class="chip">總專案數 <b id="projcount"></b></span>
     </div>
   </div>
-
+ 
   <div class="sec-h"><h2>Overview</h2></div>
   <div class="grid charts">
     <div id="kpis" style="display:contents"></div>
@@ -196,29 +196,27 @@
       <div id="overdue"></div>
     </div>
   </div>
-
+ 
   <div class="sec-h"><h2>專案進度總覽</h2><span>點擊專案可展開任務明細</span></div>
   <div class="card"><div id="projects"></div></div>
-
+ 
   <div class="sec-h"><h2>各負責人任務</h2></div>
   <div class="owner-tabs-wrap" id="ownerTabs"></div>
   <div class="owner-panel" id="ownerPanel"></div>
-
+ 
   <div class="sec-h"><h2>工作看板</h2></div>
   <div class="kanban" id="kanban"></div>
-
+ 
   <div class="foot">
     指標依定義即時計算：完成率＝已完成÷總任務；專案進度＝該專案各任務進度平均（含未開始）；落後＝結束日早於今日且實際完成日為空。<br>
-    資料來源 Notion · BPM Team teamspace（動態納入新專案）。本頁為快照，更新請對 Claude 說「更新 dashboard」。
+    資料來源 Notion · BPM Team teamspace（動態納入新專案）。點擊右上角「更新資料」可重新載入最新資料。
   </div>
 </div>
-
+ 
 <script>
-/* === 資料注入點（由 app.py 以 JSON 帶入，勿手動修改標記字串） === */
 const SNAPSHOT_DATE = "__SNAPSHOT_DATE__";
 const TASKS = __TASKS_JSON__;
-const OWNERS = __OWNERS_JSON__;
-
+ 
 const PHASE = {"需求確認":1,"Kick-off 會議":2,"Kick-off Meeting":2,"報價單簽回":3,"採購和付款方式確認":3,"開發":4,"部署":5,"UAT":6,"KUT":7,"技轉和驗收":8};
 const PRIO_RANK = {"高":0,"中":1,"低":2};
 function taskOrder(a,b){
@@ -229,37 +227,37 @@ function taskOrder(a,b){
   if(!a.end && b.end) return 1;
   return 0;
 }
-
+ 
 const STC = {"未開始":"var(--grey)","進行中":"var(--orange)","已完成":"var(--blue)"};
 const today = new Date(SNAPSHOT_DATE+"T00:00:00+08:00");
 const esc = s => (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const prioCls = p => p==="高"?"hi":p==="中"?"mid":"lo";
 function daysLate(end){ const d=new Date(end+"T00:00:00+08:00"); return Math.round((today-d)/86400000); }
-function isOverdue(t){ return t.end && !t.actual_end && daysLate(t.end)>0; }
+function isOverdue(t){ return t.end && !t.actual_end && t.status!=="已完成" && daysLate(t.end)>0; }
 function whoCell(owner){
   if(!owner) return '<span style="color:var(--ink3)">未指派</span>';
   return esc(owner);
 }
 function stPill(s){ return '<span class="st"><span class="sdot" style="background:'+STC[s]+'"></span>'+s+'</span>'; }
-
+ 
 const total = TASKS.length;
 const cnt = s => TASKS.filter(t=>t.status===s).length;
 const nInProg = cnt("進行中"), nDone = cnt("已完成"), nTodo = cnt("未開始");
 const decisionList = TASKS.filter(t=>t.decide==="待決議");
 const overdueList = TASKS.filter(t=>isOverdue(t)).sort((a,b)=>daysLate(b.end)-daysLate(a.end));
-
+ 
 const projOrder=[]; const projMap={};
 TASKS.forEach(t=>{ if(!projMap[t.proj]){projMap[t.proj]=[];projOrder.push(t.proj);} projMap[t.proj].push(t); });
 const projects = projOrder.map(name=>{
   const ts=projMap[name];
   const avg=Math.round(ts.reduce((s,t)=>s+t.progress,0)/ts.length);
   return {name, tasks:ts, avg, n:ts.length};
-}).sort((a,b)=>b.avg-a.avg);
-
+});
+ 
 document.getElementById("snap").textContent = SNAPSHOT_DATE;
 document.getElementById("projcount").textContent = projects.length + " 個";
 document.getElementById("donutcenter").textContent = total;
-
+ 
 const kpiDefs = [
   {n:total, lbl:"總任務件數", sub:"", cls:"", ic:"i-navy",
    svg:'<path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4 6h16M4 12h16M4 18h10"/>'},
@@ -277,7 +275,7 @@ document.getElementById("kpis").innerHTML = kpiDefs.map(k=>`
     <div class="lbl">${k.lbl}</div>
     ${k.sub?`<div class="sub">${k.sub}</div>`:``}
   </div>`).join("");
-
+ 
 (function(){
   const segs=[{k:"已完成",v:nDone},{k:"進行中",v:nInProg},{k:"未開始",v:nTodo}];
   const r=64, cx=80, cy=80, C=2*Math.PI*r; let off=0;
@@ -291,7 +289,7 @@ document.getElementById("kpis").innerHTML = kpiDefs.map(k=>`
   document.getElementById("donutlegend").innerHTML=segs.map(s=>`
     <div class="row"><span class="sw" style="background:${STC[s.k]}"></span>${s.k}<span class="v">${s.v}</span></div>`).join("");
 })();
-
+ 
 const maxN=Math.max(...projects.map(p=>p.n));
 (function(){
   const legendHTML=`<div style="display:flex;gap:14px;margin-bottom:12px;flex-wrap:wrap">
@@ -310,7 +308,7 @@ const maxN=Math.max(...projects.map(p=>p.n));
     if(nTd){segs.push(`#b9bccd ${cum}% ${cum+pTd}%`);cum+=pTd;}
     if(nIp){segs.push(`#f97316 ${cum}% ${cum+pIp}%`);cum+=pIp;}
     if(nDn){segs.push(`#3B9BE8 ${cum}% ${cum+pDn}%`);cum+=pDn;}
-    const grad=segs.length?`linear-gradient(90deg,${segs.join(",")})`:'';;
+    const grad=segs.length?`linear-gradient(90deg,${segs.join(",")})`:'';
     const tip=`未開始 ${nTd} ／ 進行中 ${nIp} ／ 已完成 ${nDn}`;
     return `<div class="bar-row">
       <div class="top"><span class="name">${esc(p.name)}</span><span class="val">${p.n} 筆</span></div>
@@ -324,7 +322,7 @@ const maxN=Math.max(...projects.map(p=>p.n));
   }).join("");
   document.getElementById("projbars").insertAdjacentHTML("beforeend", legendHTML+barsHTML);
 })();
-
+ 
 document.getElementById("decision").innerHTML = decisionList.length ? `
   <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>待決議事項</th></tr></thead><tbody>
   ${decisionList.map(t=>`<tr>
@@ -332,7 +330,7 @@ document.getElementById("decision").innerHTML = decisionList.length ? `
     <td>${esc(t.task)}</td><td>${whoCell(t.owner)}</td>
     <td>${esc(t.note)||'<span style="color:var(--ink3)">（未填說明）</span>'}</td></tr>`).join("")}
   </tbody></table>` : `<div class="empty"><div class="big">目前沒有待決議事項</div></div>`;
-
+ 
 document.getElementById("overdue").innerHTML = overdueList.length ? `
   <table><thead><tr><th>專案</th><th>任務</th><th>負責人</th><th>預計完成</th><th>落後</th></tr></thead><tbody>
   ${overdueList.map(t=>`<tr>
@@ -340,7 +338,7 @@ document.getElementById("overdue").innerHTML = overdueList.length ? `
     <td>${esc(t.task)}</td><td>${whoCell(t.owner)}</td>
     <td>${esc(t.end)}</td><td class="late">${daysLate(t.end)} 天</td></tr>`).join("")}
   </tbody></table>` : `<div class="empty"><div class="big">目前沒有落後任務</div></div>`;
-
+ 
 document.getElementById("projects").innerHTML = projects.map((p,i)=>`
   <div class="proj" id="proj${i}">
     <div class="proj-head" onclick="document.getElementById('proj${i}').classList.toggle('open')">
@@ -360,11 +358,11 @@ document.getElementById("projects").innerHTML = projects.map((p,i)=>`
         <td>${whoCell(t.owner)}</td><td>${stPill(t.status)}</td>
         <td><span class="mini"><i style="width:${t.progress}%"></i></span> <span style="font-size:12px;font-weight:700">${t.progress}%</span></td>
         <td>${t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}${isOverdue(t)?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}</td>
-        <td><span class="tg ${prioCls(t.prio)}">${t.prio}</span></td></tr>`).join("")}
+        <td>${t.prio?'<span class="tg '+prioCls(t.prio)+'">'+t.prio+'</span>':'<span style="color:var(--ink3)">—</span>'}</td></tr>`).join("")}
       </tbody></table>
     </div>
   </div>`).join("");
-
+ 
 document.getElementById("kanban").innerHTML = ["未開始","進行中","已完成"].map(st=>{
   const items=TASKS.filter(t=>t.status===st);
   const cards = items.length ? items.map(t=>`<div class="kc" style="border-left-color:${STC[st]}">
@@ -378,20 +376,12 @@ document.getElementById("kanban").innerHTML = ["未開始","進行中","已完�
     <div class="col-body">${cards}</div>
   </div>`;
 }).join("");
-
+ 
 (function(){
+  const OWNERS=["Larry","Harry","Cindy"];
   function ownerTasks(name){
-    const projRank={};
-    projects.forEach((p,i)=>{ projRank[p.name]=i; });
     return TASKS.filter(t=>t.owner&&t.owner.split(",").map(s=>s.trim()).includes(name))
-      .slice().sort((a,b)=>{
-        const pr=(projRank[a.proj]??99)-(projRank[b.proj]??99);
-        if(pr!==0) return pr;
-        if(a.end && b.end) return a.end < b.end ? -1 : a.end > b.end ? 1 : 0;
-        if(a.end && !b.end) return -1;
-        if(!a.end && b.end) return 1;
-        return 0;
-      });
+      .slice().sort(taskOrder);
   }
   function ownerTable(tasks){
     if(!tasks.length) return '<div class="empty"><div class="sm">此人目前沒有任務</div></div>';
@@ -403,43 +393,41 @@ document.getElementById("kanban").innerHTML = ["未開始","進行中","已完�
       <td>${stPill(t.status)}</td>
       <td><span class="mini"><i style="width:${t.progress}%"></i></span> <span style="font-size:12px;font-weight:700">${t.progress}%</span></td>
       <td>${t.end?esc(t.end):'<span style="color:var(--ink3)">—</span>'}${isOverdue(t)?' <span class="late" style="font-size:11px">逾'+daysLate(t.end)+'天</span>':''}</td>
-      <td><span class="tg ${prioCls(t.prio)}">${t.prio}</span></td>
+      <td>${t.prio?'<span class="tg '+prioCls(t.prio)+'">'+t.prio+'</span>':'<span style="color:var(--ink3)">—</span>'}</td>
     </tr>`).join("")}</tbody></table>`;
   }
   const tabsEl=document.getElementById("ownerTabs");
   const panelEl=document.getElementById("ownerPanel");
   const allTasks=OWNERS.map(ownerTasks);
-  tabsEl.innerHTML=OWNERS.map((n,i)=>`<div class="owner-tab${i===0?" active":""}" data-i="${i}">${esc(n)}<span class="tcnt">${allTasks[i].length}</span></div>`).join("");
-  panelEl.innerHTML=ownerTable(allTasks[0]||[]);
+  tabsEl.innerHTML=OWNERS.map((n,i)=>`<div class="owner-tab${i===0?" active":""}" data-i="${i}">${n}<span class="tcnt">${allTasks[i].length}</span></div>`).join("");
+  panelEl.innerHTML=ownerTable(allTasks[0]);
   tabsEl.addEventListener("click",function(e){
     const tab=e.target.closest(".owner-tab");
     if(!tab) return;
     const i=+tab.dataset.i;
     tabsEl.querySelectorAll(".owner-tab").forEach((t,j)=>t.classList.toggle("active",j===i));
     panelEl.innerHTML=ownerTable(allTasks[i]);
-    postHeight();
   });
 })();
-
-/* === Streamlit iframe 自動撐高：避免內容被截斷 === */
-function postHeight(){
-  var h = Math.max(
-    document.documentElement.scrollHeight,
-    document.body.scrollHeight,
-    document.documentElement.offsetHeight
-  );
-  try{
-    window.parent.postMessage({
-      isStreamlitMessage:true,
-      type:"streamlit:setFrameHeight",
-      height:h
-    }, "*");
-  }catch(e){}
-}
-window.addEventListener("load", function(){ postHeight(); setTimeout(postHeight,200); setTimeout(postHeight,600); });
-window.addEventListener("resize", postHeight);
-document.addEventListener("click", function(){ setTimeout(postHeight,300); }); // 展開專案 / 切換分頁後重新量測
-try{ new ResizeObserver(function(){ postHeight(); }).observe(document.body); }catch(e){}
+ 
+// ── 自動調整外層 iframe 高度，避免出現內外兩條滑軌 ──
+(function(){
+  function autoResizeFrame(){
+    try{
+      const fe = window.frameElement; // Streamlit components.html 用 srcdoc，同源可直接存取
+      if(fe){
+        fe.style.height = document.documentElement.scrollHeight + "px";
+      }
+    }catch(e){ /* 非嵌入環境（直接開啟此檔案）時忽略 */ }
+  }
+  window.addEventListener("load", autoResizeFrame);
+  window.addEventListener("resize", autoResizeFrame);
+  if(window.ResizeObserver){
+    new ResizeObserver(autoResizeFrame).observe(document.body);
+  }
+  // 保險：資料渲染、手風琴展開等非同步變化後再校正幾次
+  [100, 300, 800, 1500].forEach(ms => setTimeout(autoResizeFrame, ms));
+})();
 </script>
 </body>
 </html>
