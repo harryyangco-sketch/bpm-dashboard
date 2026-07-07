@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 import json
 
 import streamlit as st
@@ -140,27 +140,12 @@ if not tasks:
     st.error("無法載入任何任務資料，請確認 Notion Token 是否正確、資料庫是否已分享給 Integration。")
     st.stop()
 
-today_str = date.today().isoformat()
-
-# ── 動態整理「各負責人任務」分頁要用的人員清單 ──
-# 從所有任務的「負責人」欄位（可能是 "Harry, Cindy" 這種逗號分隔）拆出每個人名，
-# 依第一次出現的順序去重，這樣以後 Notion 裡新增誰負責任務，分頁會自動出現，不用改程式碼。
-owners_seen = []
-owners_set = set()
-for t in tasks:
-    if not t.get("owner"):
-        continue
-    for name in [n.strip() for n in t["owner"].split(",") if n.strip()]:
-        if name not in owners_set:
-            owners_set.add(name)
-            owners_seen.append(name)
+today_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M:%S")
 
 tasks_json = json.dumps(tasks, ensure_ascii=False)
-owners_json = json.dumps(owners_seen, ensure_ascii=False)
 # 防護：若 Notion 欄位內容剛好包含 "</script>"，未跳脫會提前關閉整段 <script>，
 # 導致頁面壞掉甚至有 XSS 風險，因此把 "</" 轉成 JS 可安全解析的 "<\/"。
 tasks_json = tasks_json.replace("</", "<\\/")
-owners_json = owners_json.replace("</", "<\\/")
 
 HTML_PATH = Path(__file__).parent / "dashboard.html"
 if not HTML_PATH.exists():
@@ -168,9 +153,8 @@ if not HTML_PATH.exists():
     st.stop()
 
 html = HTML_PATH.read_text(encoding="utf-8")
-html = html.replace("__SNAPSHOT_DATE__", today_str)
+html = html.replace("__SNAPSHOT_DATETIME__", today_str)
 html = html.replace("__TASKS_JSON__", tasks_json)
-html = html.replace("__OWNERS_JSON__", owners_json)
 
 # scrolling=False + dashboard.html 內建的自動調整高度腳本（直接改 iframe 自身高度），
 # 讓 iframe 高度跟著內容撐開，只留瀏覽器外層一條滑軌（不會有內外兩條）。
