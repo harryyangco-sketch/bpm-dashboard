@@ -310,7 +310,7 @@ const maxN=Math.max(...projects.map(p=>p.n));
     if(nTd){segs.push(`#b9bccd ${cum}% ${cum+pTd}%`);cum+=pTd;}
     if(nIp){segs.push(`#f97316 ${cum}% ${cum+pIp}%`);cum+=pIp;}
     if(nDn){segs.push(`#3B9BE8 ${cum}% ${cum+pDn}%`);cum+=pDn;}
-    const grad=segs.length?`linear-gradient(90deg,${segs.join(",")})`:'';;
+    const grad=segs.length?`linear-gradient(90deg,${segs.join(",")})`:'';
     const tip=`未開始 ${nTd} ／ 進行中 ${nIp} ／ 已完成 ${nDn}`;
     return `<div class="bar-row">
       <div class="top"><span class="name">${esc(p.name)}</span><span class="val">${p.n} 筆</span></div>
